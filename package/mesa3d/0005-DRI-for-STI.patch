@@ -1,0 +1,37 @@
+From 63f9b91ec48eea84c4d671cfb2d6606a6e503b6b Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Sun, 23 Apr 2023 22:27:14 +0200
+Subject: [PATCH] DRI for STI
+
+---
+ src/gallium/targets/dri/meson.build | 1 +
+ src/gallium/targets/dri/target.c    | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/src/gallium/targets/dri/meson.build b/src/gallium/targets/dri/meson.build
+index d0a9b91..4653f8e 100644
+--- a/src/gallium/targets/dri/meson.build
++++ b/src/gallium/targets/dri/meson.build
+@@ -91,6 +91,7 @@ foreach d : [[with_gallium_kmsro, [
+                'st7586_dri.so',
+                'st7735r_dri.so',
+                'stm_dri.so',
++               'sti_dri.so',
+ 	       'sun4i-drm_dri.so',
+              ]],
+              [with_gallium_radeonsi, 'radeonsi_dri.so'],
+diff --git a/src/gallium/targets/dri/target.c b/src/gallium/targets/dri/target.c
+index d506869..6cd0e66 100644
+--- a/src/gallium/targets/dri/target.c
++++ b/src/gallium/targets/dri/target.c
+@@ -121,6 +121,7 @@ DEFINE_LOADER_DRM_ENTRYPOINT(rockchip)
+ DEFINE_LOADER_DRM_ENTRYPOINT(st7586)
+ DEFINE_LOADER_DRM_ENTRYPOINT(st7735r)
+ DEFINE_LOADER_DRM_ENTRYPOINT(stm)
++DEFINE_LOADER_DRM_ENTRYPOINT(sti)
+ DEFINE_LOADER_DRM_ENTRYPOINT(sun4i_drm)
+ #endif
+ 
+-- 
+2.40.0
+
