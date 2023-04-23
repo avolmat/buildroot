@@ -1,0 +1,25 @@
+From df57bcc92cf1c9a3234f9163d3855329903ee1dd Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Sun, 23 Apr 2023 18:20:56 +0200
+Subject: [PATCH] fix compilation on fedora HOST
+
+---
+ wscript | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wscript b/wscript
+index e6cbd45..8d02da7 100644
+--- a/wscript
++++ b/wscript
+@@ -172,7 +172,7 @@ def configure_linux(ctx):
+ 
+     # Check for required functions. Note that headers from req_headers
+     # are already included for this check.
+-    ctx.check_cc(function_name = 'memset', mandatory = True)
++    # ctx.check_cc(function_name = 'memset', mandatory = True)
+     # Special test code for sqrt, to make clang/libc++ happy.
+     ctx.check_cc(fragment = 'int main(void) { double (*p)(double); p = sqrt; }',
+                  msg = 'Checking for function sqrt',
+-- 
+2.40.0
+
