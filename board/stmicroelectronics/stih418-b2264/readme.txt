@@ -1,0 +1,89 @@
+STih418-B2264 / 4kOpen
+
+Intro
+=====
+
+This configuration supports the STIh418-B2264 (4kOpen) board
+platform:
+
+  https://www.4kopen.com/
+
+How to build
+============
+
+ $ make stih418_b2264_defconfig
+ $ make
+
+How to write the microSD card / USB
+===================================
+
+Once the build process is finished you will have an image called
+"sdcard.img" in the output/images/ directory.
+
+Copy the bootable "sdcard.img" onto an microSD card with "dd":
+
+  $ sudo dd if=output/images/sdcard.img of=/dev/sdX
+
+Or simply put "uImage", "stih418-b2264-box.dtb", "rootfs.cpio.uboot"
+on USB FAT partition.
+
+Boot the board
+==============
+
+ (1) Insert the microSD card or USB into USB3 port
+
+ (2) From u-boot console (once, then type "saveenv")
+     µSD: setenv buildroot 'mmc rescan; fatload mmc 0:1 0x94000000 uimage; \
+	  fatload mmc 0:1 0x94f00000 devicetree.dtb; \
+	  fatload mmc 0:1 0x95000000 uramdisk.image.gz; \
+	  setenv bootargs "console=ttyAS0,115200 loglevel=7 \
+	  earlyprintk quiet root=/dev/ram0 rw \
+	  initrd=0x95000040,0x${filesize}"; bootm 0x94000000 0x95000000 0x94f00000'
+
+     USB: setenv buildroot 'usb start; fatload usb 0:1 0x94000000 uImage; \
+	  fatload usb 0:1 0x94f00000 stih418-b2264-box.dtb; \
+	  fatload usb 0:1 0x95000000 rootfs.cpio.uboot; \
+	  setenv bootargs "console=ttyAS0,115200 loglevel=7 \
+	  earlyprintk quiet root=/dev/ram0 rw \
+	  initrd=0x95000040,0x${filesize}"; bootm 0x94000000 0x95000000 0x94f00000'
+
+ (3) from u-boot console "run buildroot"
+
+FIXME
+=====
+ - Understand the 0x40 offset for Initrd, should be take in account in bootm....
+
+Memory map
+==========
+
+  Position in memory (max DTB 1Mo, max uImage 15Mo)
+
+  +-0x40000000----+
+  |   ~1.34Go     | ^
+  |               | |
+  +-0x94000000----+ |
+  | uImage - 15Mo | |
+  +-0x94f00000----+ | 2Go
+  | dtb    -  1Mo | |
+  +-0x95000000----+ |
+  | rootfs        | |
+  |               | |
+  |    ~688Mo     | |
+  +-0xc0000000----+ v
+
+Wayland tips
+============
+
+  # Start Weston from root console (plug USB mouse/keyboard first)
+  if test -z "${XDG_RUNTIME_DIR}"; then
+      export XDG_RUNTIME_DIR=/tmp/${UID}-runtime-dir
+      if ! test -d "${XDG_RUNTIME_DIR}"; then
+          mkdir "${XDG_RUNTIME_DIR}"
+          chmod 0700 "${XDG_RUNTIME_DIR}"
+      fi
+  fi
+  weston --idle-time=0
+
+  # Demos from Weston terminal
+  glmark2-es2-wayland --run-forever
+  es2gears_wayland
