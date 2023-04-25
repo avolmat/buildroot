@@ -1,0 +1,714 @@
+From 7758fbdb634de8f2e4da2e1eed0749bfecc18f2a Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:40 +0100
+Subject: [PATCH 1/9] drm/lima: reset async_reset on pp hard reset
+
+Lima pp jobs use an async reset to avoid having to wait for the soft
+reset right after a job. The soft reset is done at the end of a job and
+a reset_complete flag is expected to be set at the next job.
+However, in case the user runs into a job timeout from any application,
+a hard reset is issued to the hardware. This hard reset clears the
+reset_complete flag, which causes an error message to show up before the
+next job.
+This is probably harmless for the execution but can be very confusing to
+debug, as it blames a reset timeout on the next application to submit a
+job.
+Reset the async_reset flag when doing the hard reset so that we don't
+get that message.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+Reviewed-by: Vasily Khoruzhick <anarsoul@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_pp.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/lima/lima_pp.c b/drivers/gpu/drm/lima/lima_pp.c
+index a5c95bed08c0..a8f8f63b8295 100644
+--- a/drivers/gpu/drm/lima/lima_pp.c
++++ b/drivers/gpu/drm/lima/lima_pp.c
+@@ -191,6 +191,13 @@ static int lima_pp_hard_reset(struct lima_ip *ip)
+ 	pp_write(LIMA_PP_PERF_CNT_0_LIMIT, 0);
+ 	pp_write(LIMA_PP_INT_CLEAR, LIMA_PP_IRQ_MASK_ALL);
+ 	pp_write(LIMA_PP_INT_MASK, LIMA_PP_IRQ_MASK_USED);
++
++	/*
++	 * if there was an async soft reset queued,
++	 * don't wait for it in the next job
++	 */
++	ip->data.async_reset = false;
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+
+From e6000d6e2c490f127b767d60a86b7000f1a70105 Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:41 +0100
+Subject: [PATCH 2/9] drm/lima: reset async_reset on gp hard reset
+
+Lima gp jobs use an async reset to avoid having to wait for the soft
+reset right after a job. The soft reset is done at the end of a job and
+a reset_complete flag is expected to be set at the next job.
+However, in case the user runs into a job timeout from any application,
+a hard reset is issued to the hardware. This hard reset clears the
+reset_complete flag, which causes an error message to show up before the
+next job.
+This is probably harmless for the execution but can be very confusing to
+debug, as it blames a reset timeout on the next application to submit a
+job.
+Reset the async_reset flag when doing the hard reset so that we don't
+get that message.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_gp.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/lima/lima_gp.c b/drivers/gpu/drm/lima/lima_gp.c
+index 8dd501b7a3d0..b9a06e701a33 100644
+--- a/drivers/gpu/drm/lima/lima_gp.c
++++ b/drivers/gpu/drm/lima/lima_gp.c
+@@ -189,6 +189,13 @@ static int lima_gp_hard_reset(struct lima_ip *ip)
+ 	gp_write(LIMA_GP_PERF_CNT_0_LIMIT, 0);
+ 	gp_write(LIMA_GP_INT_CLEAR, LIMA_GP_IRQ_MASK_ALL);
+ 	gp_write(LIMA_GP_INT_MASK, LIMA_GP_IRQ_MASK_USED);
++
++	/*
++	 * if there was an async soft reset queued,
++	 * don't wait for it in the next job
++	 */
++	ip->data.async_reset = false;
++
+ 	return 0;
+ }
+ 
+-- 
+2.43.0
+
+From 43049b64069af73c3d1c2b5d70b3a5813f3309ee Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:42 +0100
+Subject: [PATCH 3/9] drm/lima: set pp bus_stop bit before hard reset
+
+This is required for reliable hard resets. Otherwise, doing a hard reset
+while a task is still running (such as a task which is being stopped by
+the drm_sched timeout handler) may result in random mmu write timeouts
+or lockups which cause the entire gpu to hang.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+Reviewed-by: Vasily Khoruzhick <anarsoul@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_pp.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/gpu/drm/lima/lima_pp.c b/drivers/gpu/drm/lima/lima_pp.c
+index a8f8f63b8295..ac097dd75072 100644
+--- a/drivers/gpu/drm/lima/lima_pp.c
++++ b/drivers/gpu/drm/lima/lima_pp.c
+@@ -168,6 +168,11 @@ static void lima_pp_write_frame(struct lima_ip *ip, u32 *frame, u32 *wb)
+ 	}
+ }
+ 
++static int lima_pp_bus_stop_poll(struct lima_ip *ip)
++{
++	return !!(pp_read(LIMA_PP_STATUS) & LIMA_PP_STATUS_BUS_STOPPED);
++}
++
+ static int lima_pp_hard_reset_poll(struct lima_ip *ip)
+ {
+ 	pp_write(LIMA_PP_PERF_CNT_0_LIMIT, 0xC01A0000);
+@@ -181,6 +186,14 @@ static int lima_pp_hard_reset(struct lima_ip *ip)
+ 
+ 	pp_write(LIMA_PP_PERF_CNT_0_LIMIT, 0xC0FFE000);
+ 	pp_write(LIMA_PP_INT_MASK, 0);
++
++	pp_write(LIMA_PP_CTRL, LIMA_PP_CTRL_STOP_BUS);
++	ret = lima_poll_timeout(ip, lima_pp_bus_stop_poll, 10, 100);
++	if (ret) {
++		dev_err(dev->dev, "pp %s bus stop timeout\n", lima_ip_name(ip));
++		return ret;
++	}
++
+ 	pp_write(LIMA_PP_CTRL, LIMA_PP_CTRL_FORCE_RESET);
+ 	ret = lima_poll_timeout(ip, lima_pp_hard_reset_poll, 10, 100);
+ 	if (ret) {
+-- 
+2.43.0
+
+From 66ec0d1fcd9e60fad15d5393185990d3745184c9 Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:43 +0100
+Subject: [PATCH 4/9] drm/lima: set gp bus_stop bit before hard reset
+
+This is required for reliable hard resets. Otherwise, doing a hard reset
+while a task is still running (such as a task which is being stopped by
+the drm_sched timeout handler) may result in random mmu write timeouts
+or lockups which cause the entire gpu to hang.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_gp.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/gpu/drm/lima/lima_gp.c b/drivers/gpu/drm/lima/lima_gp.c
+index b9a06e701a33..4355fa7b17f4 100644
+--- a/drivers/gpu/drm/lima/lima_gp.c
++++ b/drivers/gpu/drm/lima/lima_gp.c
+@@ -166,6 +166,11 @@ static void lima_gp_task_run(struct lima_sched_pipe *pipe,
+ 	gp_write(LIMA_GP_CMD, cmd);
+ }
+ 
++static int lima_gp_bus_stop_poll(struct lima_ip *ip)
++{
++	return !!(gp_read(LIMA_GP_STATUS) & LIMA_GP_STATUS_BUS_STOPPED);
++}
++
+ static int lima_gp_hard_reset_poll(struct lima_ip *ip)
+ {
+ 	gp_write(LIMA_GP_PERF_CNT_0_LIMIT, 0xC01A0000);
+@@ -179,6 +184,13 @@ static int lima_gp_hard_reset(struct lima_ip *ip)
+ 
+ 	gp_write(LIMA_GP_PERF_CNT_0_LIMIT, 0xC0FFE000);
+ 	gp_write(LIMA_GP_INT_MASK, 0);
++
++	gp_write(LIMA_GP_CMD, LIMA_GP_CMD_STOP_BUS);
++	ret = lima_poll_timeout(ip, lima_gp_bus_stop_poll, 10, 100);
++	if (ret) {
++		dev_err(dev->dev, "%s bus stop timeout\n", lima_ip_name(ip));
++		return ret;
++	}
+ 	gp_write(LIMA_GP_CMD, LIMA_GP_CMD_RESET);
+ 	ret = lima_poll_timeout(ip, lima_gp_hard_reset_poll, 10, 100);
+ 	if (ret) {
+-- 
+2.43.0
+
+From 817a0f959a3091147eb5b251a8cc2cb2f0d46db8 Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:44 +0100
+Subject: [PATCH 5/9] drm/lima: handle spurious timeouts due to high irq
+ latency
+
+There are several unexplained and unreproduced cases of rendering
+timeouts with lima, for which one theory is high IRQ latency coming from
+somewhere else in the system.
+This kind of occurrence may cause applications to trigger unnecessary
+resets of the GPU or even applications to hang if it hits an issue in
+the recovery path.
+Panfrost already does some special handling to account for such
+"spurious timeouts", it makes sense to have this in lima too to reduce
+the chance that it hit users.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_sched.c | 31 ++++++++++++++++++++++++++++---
+ 1 file changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/lima/lima_sched.c b/drivers/gpu/drm/lima/lima_sched.c
+index 295f0353a02e..b6862a1da4fa 100644
+--- a/drivers/gpu/drm/lima/lima_sched.c
++++ b/drivers/gpu/drm/lima/lima_sched.c
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0 OR MIT
+ /* Copyright 2017-2019 Qiang Yu <yuq825@gmail.com> */
+ 
++#include <linux/hardirq.h>
+ #include <linux/iosys-map.h>
+ #include <linux/kthread.h>
+ #include <linux/slab.h>
+@@ -401,9 +402,35 @@ static enum drm_gpu_sched_stat lima_sched_timedout_job(struct drm_sched_job *job
+ 	struct lima_sched_pipe *pipe = to_lima_pipe(job->sched);
+ 	struct lima_sched_task *task = to_lima_task(job);
+ 	struct lima_device *ldev = pipe->ldev;
++	struct lima_ip *ip = pipe->processor[0];
++	int i;
++
++	/*
++	 * If the GPU managed to complete this jobs fence, the timeout is
++	 * spurious. Bail out.
++	 */
++	if (dma_fence_is_signaled(task->fence)) {
++		DRM_WARN("%s spurious timeout\n", lima_ip_name(ip));
++		return DRM_GPU_SCHED_STAT_NOMINAL;
++	}
++
++	/*
++	 * Lima IRQ handler may take a long time to process an interrupt
++	 * if there is another IRQ handler hogging the processing.
++	 * In order to catch such cases and not report spurious Lima job
++	 * timeouts, synchronize the IRQ handler and re-check the fence
++	 * status.
++	 */
++	for (i = 0; i < pipe->num_processor; i++)
++		synchronize_irq(pipe->processor[i]->irq);
++
++	if (dma_fence_is_signaled(task->fence)) {
++		DRM_WARN("%s unexpectedly high interrupt latency\n", lima_ip_name(ip));
++		return DRM_GPU_SCHED_STAT_NOMINAL;
++	}
+ 
+ 	if (!pipe->error)
+-		DRM_ERROR("lima job timeout\n");
++		DRM_ERROR("%s job timeout\n", lima_ip_name(ip));
+ 
+ 	drm_sched_stop(&pipe->base, &task->base);
+ 
+@@ -417,8 +444,6 @@ static enum drm_gpu_sched_stat lima_sched_timedout_job(struct drm_sched_job *job
+ 	if (pipe->bcast_mmu)
+ 		lima_mmu_page_fault_resume(pipe->bcast_mmu);
+ 	else {
+-		int i;
+-
+ 		for (i = 0; i < pipe->num_mmu; i++)
+ 			lima_mmu_page_fault_resume(pipe->mmu[i]);
+ 	}
+-- 
+2.43.0
+
+From 895e08ccb582732e0b4ac3b6f31372096076aa67 Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:45 +0100
+Subject: [PATCH 6/9] drm/lima: remove guilty drm_sched context handling
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Marking the context as guilty currently only makes the application which
+hits a single timeout problem to stop its rendering context entirely.
+All jobs submitted later are dropped from the guilty context.
+
+Lima runs on fairly underpowered hardware for modern standards and it is
+not entirely unreasonable that a rendering job may time out occasionally
+due to high system load or too demanding application stack. In this case
+it would be generally preferred to report the error but try to keep the
+application going.
+
+Other similar embedded GPU drivers don't make use of the guilty context
+flag. Now that there are reliability improvements to the lima timeout
+recovery handling, drop the guilty contexts to let the application keep
+running in this case.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+Acked-by: Christian König <christian.koenig@amd.com>
+Reviewed-by: Vasily Khoruzhick <anarsoul@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_ctx.c   | 2 +-
+ drivers/gpu/drm/lima/lima_ctx.h   | 1 -
+ drivers/gpu/drm/lima/lima_sched.c | 5 ++---
+ drivers/gpu/drm/lima/lima_sched.h | 3 +--
+ 4 files changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/gpu/drm/lima/lima_ctx.c b/drivers/gpu/drm/lima/lima_ctx.c
+index 891d5cd5019a..bcd0e0582eb2 100644
+--- a/drivers/gpu/drm/lima/lima_ctx.c
++++ b/drivers/gpu/drm/lima/lima_ctx.c
+@@ -18,7 +18,7 @@ int lima_ctx_create(struct lima_device *dev, struct lima_ctx_mgr *mgr, u32 *id)
+ 	kref_init(&ctx->refcnt);
+ 
+ 	for (i = 0; i < lima_pipe_num; i++) {
+-		err = lima_sched_context_init(dev->pipe + i, ctx->context + i, &ctx->guilty);
++		err = lima_sched_context_init(dev->pipe + i, ctx->context + i);
+ 		if (err)
+ 			goto err_out0;
+ 	}
+diff --git a/drivers/gpu/drm/lima/lima_ctx.h b/drivers/gpu/drm/lima/lima_ctx.h
+index 74e2be09090f..5b1063ce968b 100644
+--- a/drivers/gpu/drm/lima/lima_ctx.h
++++ b/drivers/gpu/drm/lima/lima_ctx.h
+@@ -13,7 +13,6 @@ struct lima_ctx {
+ 	struct kref refcnt;
+ 	struct lima_device *dev;
+ 	struct lima_sched_context context[lima_pipe_num];
+-	atomic_t guilty;
+ 
+ 	/* debug info */
+ 	char pname[TASK_COMM_LEN];
+diff --git a/drivers/gpu/drm/lima/lima_sched.c b/drivers/gpu/drm/lima/lima_sched.c
+index b6862a1da4fa..19f5f5e2ffa6 100644
+--- a/drivers/gpu/drm/lima/lima_sched.c
++++ b/drivers/gpu/drm/lima/lima_sched.c
+@@ -154,13 +154,12 @@ void lima_sched_task_fini(struct lima_sched_task *task)
+ }
+ 
+ int lima_sched_context_init(struct lima_sched_pipe *pipe,
+-			    struct lima_sched_context *context,
+-			    atomic_t *guilty)
++			    struct lima_sched_context *context)
+ {
+ 	struct drm_gpu_scheduler *sched = &pipe->base;
+ 
+ 	return drm_sched_entity_init(&context->base, DRM_SCHED_PRIORITY_NORMAL,
+-				     &sched, 1, guilty);
++				     &sched, 1, NULL);
+ }
+ 
+ void lima_sched_context_fini(struct lima_sched_pipe *pipe,
+diff --git a/drivers/gpu/drm/lima/lima_sched.h b/drivers/gpu/drm/lima/lima_sched.h
+index 6a11764d87b3..6bd4f3b70109 100644
+--- a/drivers/gpu/drm/lima/lima_sched.h
++++ b/drivers/gpu/drm/lima/lima_sched.h
+@@ -91,8 +91,7 @@ int lima_sched_task_init(struct lima_sched_task *task,
+ void lima_sched_task_fini(struct lima_sched_task *task);
+ 
+ int lima_sched_context_init(struct lima_sched_pipe *pipe,
+-			    struct lima_sched_context *context,
+-			    atomic_t *guilty);
++			    struct lima_sched_context *context);
+ void lima_sched_context_fini(struct lima_sched_pipe *pipe,
+ 			     struct lima_sched_context *context);
+ struct dma_fence *lima_sched_context_queue_task(struct lima_sched_task *task);
+-- 
+2.43.0
+
+From 4536633b909d5267dacc25982ab7310b14b4c04f Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:46 +0100
+Subject: [PATCH 7/9] drm/lima: increase default job timeout to 10s
+
+The previous 500ms default timeout was fairly optimistic and could be
+hit by real world applications. Many distributions targeting devices
+with a Mali-4xx already bumped this timeout to a higher limit.
+We can be generous here with a high value as 10s since this should
+mostly catch buggy jobs like infinite loop shaders, and these don't
+seem to happen very often in real applications.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_sched.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/lima/lima_sched.c b/drivers/gpu/drm/lima/lima_sched.c
+index 19f5f5e2ffa6..03453b871261 100644
+--- a/drivers/gpu/drm/lima/lima_sched.c
++++ b/drivers/gpu/drm/lima/lima_sched.c
+@@ -505,7 +505,7 @@ static void lima_sched_recover_work(struct work_struct *work)
+ int lima_sched_pipe_init(struct lima_sched_pipe *pipe, const char *name)
+ {
+ 	unsigned int timeout = lima_sched_timeout_ms > 0 ?
+-			       lima_sched_timeout_ms : 500;
++			       lima_sched_timeout_ms : 10000;
+ 
+ 	pipe->fence_context = dma_fence_context_alloc(1);
+ 	spin_lock_init(&pipe->fence_lock);
+-- 
+2.43.0
+
+From f6eb6b6a558f052a3d83c8d2fa106cc2d223af34 Mon Sep 17 00:00:00 2001
+From: Erico Nunes <nunes.erico@gmail.com>
+Date: Wed, 24 Jan 2024 03:59:47 +0100
+Subject: [PATCH 8/9] drm/lima: standardize debug messages by ip name
+
+Some debug messages carried the ip name, or included "lima", or
+included both the ip name and then the numbered ip name again.
+Make the messages more consistent by always looking up and showing
+the ip name first.
+
+Signed-off-by: Erico Nunes <nunes.erico@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_gp.c       | 20 +++++++++++---------
+ drivers/gpu/drm/lima/lima_l2_cache.c |  6 ++++--
+ drivers/gpu/drm/lima/lima_mmu.c      | 18 +++++++++---------
+ drivers/gpu/drm/lima/lima_pmu.c      |  3 ++-
+ drivers/gpu/drm/lima/lima_pp.c       | 19 ++++++++++---------
+ 5 files changed, 36 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/gpu/drm/lima/lima_gp.c b/drivers/gpu/drm/lima/lima_gp.c
+index 4355fa7b17f4..6b354e2fb61d 100644
+--- a/drivers/gpu/drm/lima/lima_gp.c
++++ b/drivers/gpu/drm/lima/lima_gp.c
+@@ -34,11 +34,11 @@ static irqreturn_t lima_gp_irq_handler(int irq, void *data)
+ 	if (state & LIMA_GP_IRQ_MASK_ERROR) {
+ 		if ((state & LIMA_GP_IRQ_MASK_ERROR) ==
+ 		    LIMA_GP_IRQ_PLBU_OUT_OF_MEM) {
+-			dev_dbg(dev->dev, "gp out of heap irq status=%x\n",
+-				status);
++			dev_dbg(dev->dev, "%s out of heap irq status=%x\n",
++				lima_ip_name(ip), status);
+ 		} else {
+-			dev_err(dev->dev, "gp error irq state=%x status=%x\n",
+-				state, status);
++			dev_err(dev->dev, "%s error irq state=%x status=%x\n",
++				lima_ip_name(ip), state, status);
+ 			if (task)
+ 				task->recoverable = false;
+ 		}
+@@ -89,7 +89,8 @@ static int lima_gp_soft_reset_async_wait(struct lima_ip *ip)
+ 				 v & LIMA_GP_IRQ_RESET_COMPLETED,
+ 				 0, 100);
+ 	if (err) {
+-		dev_err(dev->dev, "gp soft reset time out\n");
++		dev_err(dev->dev, "%s soft reset time out\n",
++			lima_ip_name(ip));
+ 		return err;
+ 	}
+ 
+@@ -194,7 +195,7 @@ static int lima_gp_hard_reset(struct lima_ip *ip)
+ 	gp_write(LIMA_GP_CMD, LIMA_GP_CMD_RESET);
+ 	ret = lima_poll_timeout(ip, lima_gp_hard_reset_poll, 10, 100);
+ 	if (ret) {
+-		dev_err(dev->dev, "gp hard reset timeout\n");
++		dev_err(dev->dev, "%s hard reset timeout\n", lima_ip_name(ip));
+ 		return ret;
+ 	}
+ 
+@@ -220,8 +221,9 @@ static void lima_gp_task_error(struct lima_sched_pipe *pipe)
+ {
+ 	struct lima_ip *ip = pipe->processor[0];
+ 
+-	dev_err(ip->dev->dev, "gp task error int_state=%x status=%x\n",
+-		gp_read(LIMA_GP_INT_STAT), gp_read(LIMA_GP_STATUS));
++	dev_err(ip->dev->dev, "%s task error int_state=%x status=%x\n",
++		lima_ip_name(ip), gp_read(LIMA_GP_INT_STAT),
++		gp_read(LIMA_GP_STATUS));
+ 
+ 	lima_gp_hard_reset(ip);
+ }
+@@ -324,7 +326,7 @@ int lima_gp_init(struct lima_ip *ip)
+ 	err = devm_request_irq(dev->dev, ip->irq, lima_gp_irq_handler,
+ 			       IRQF_SHARED, lima_ip_name(ip), ip);
+ 	if (err) {
+-		dev_err(dev->dev, "gp %s fail to request irq\n",
++		dev_err(dev->dev, "%s fail to request irq\n",
+ 			lima_ip_name(ip));
+ 		return err;
+ 	}
+diff --git a/drivers/gpu/drm/lima/lima_l2_cache.c b/drivers/gpu/drm/lima/lima_l2_cache.c
+index c4080a02957b..184106ce55f8 100644
+--- a/drivers/gpu/drm/lima/lima_l2_cache.c
++++ b/drivers/gpu/drm/lima/lima_l2_cache.c
+@@ -21,7 +21,8 @@ static int lima_l2_cache_wait_idle(struct lima_ip *ip)
+ 				 !(v & LIMA_L2_CACHE_STATUS_COMMAND_BUSY),
+ 				 0, 1000);
+ 	if (err) {
+-		dev_err(dev->dev, "l2 cache wait command timeout\n");
++		dev_err(dev->dev, "%s wait command timeout\n",
++			lima_ip_name(ip));
+ 		return err;
+ 	}
+ 	return 0;
+@@ -83,7 +84,8 @@ int lima_l2_cache_init(struct lima_ip *ip)
+ 	spin_lock_init(&ip->data.lock);
+ 
+ 	size = l2_cache_read(LIMA_L2_CACHE_SIZE);
+-	dev_info(dev->dev, "l2 cache %uK, %u-way, %ubyte cache line, %ubit external bus\n",
++	dev_info(dev->dev, "%s %uK, %u-way, %ubyte cache line, %ubit external bus\n",
++		 lima_ip_name(ip),
+ 		 1 << (((size >> 16) & 0xff) - 10),
+ 		 1 << ((size >> 8) & 0xff),
+ 		 1 << (size & 0xff),
+diff --git a/drivers/gpu/drm/lima/lima_mmu.c b/drivers/gpu/drm/lima/lima_mmu.c
+index a1ae6c252dc2..e18317c5ca8c 100644
+--- a/drivers/gpu/drm/lima/lima_mmu.c
++++ b/drivers/gpu/drm/lima/lima_mmu.c
+@@ -22,7 +22,8 @@
+ 				  cond, 0, 100);	     \
+ 	if (__ret)					     \
+ 		dev_err(dev->dev,			     \
+-			"mmu command %x timeout\n", cmd);    \
++			"%s command %x timeout\n",           \
++			lima_ip_name(ip), cmd);              \
+ 	__ret;						     \
+ })
+ 
+@@ -40,14 +41,13 @@ static irqreturn_t lima_mmu_irq_handler(int irq, void *data)
+ 	if (status & LIMA_MMU_INT_PAGE_FAULT) {
+ 		u32 fault = mmu_read(LIMA_MMU_PAGE_FAULT_ADDR);
+ 
+-		dev_err(dev->dev, "mmu page fault at 0x%x from bus id %d of type %s on %s\n",
+-			fault, LIMA_MMU_STATUS_BUS_ID(status),
+-			status & LIMA_MMU_STATUS_PAGE_FAULT_IS_WRITE ? "write" : "read",
+-			lima_ip_name(ip));
++		dev_err(dev->dev, "%s page fault at 0x%x from bus id %d of type %s\n",
++			lima_ip_name(ip), fault, LIMA_MMU_STATUS_BUS_ID(status),
++			status & LIMA_MMU_STATUS_PAGE_FAULT_IS_WRITE ? "write" : "read");
+ 	}
+ 
+ 	if (status & LIMA_MMU_INT_READ_BUS_ERROR)
+-		dev_err(dev->dev, "mmu %s irq bus error\n", lima_ip_name(ip));
++		dev_err(dev->dev, "%s irq bus error\n", lima_ip_name(ip));
+ 
+ 	/* mask all interrupts before resume */
+ 	mmu_write(LIMA_MMU_INT_MASK, 0);
+@@ -102,14 +102,14 @@ int lima_mmu_init(struct lima_ip *ip)
+ 
+ 	mmu_write(LIMA_MMU_DTE_ADDR, 0xCAFEBABE);
+ 	if (mmu_read(LIMA_MMU_DTE_ADDR) != 0xCAFEB000) {
+-		dev_err(dev->dev, "mmu %s dte write test fail\n", lima_ip_name(ip));
++		dev_err(dev->dev, "%s dte write test fail\n", lima_ip_name(ip));
+ 		return -EIO;
+ 	}
+ 
+ 	err = devm_request_irq(dev->dev, ip->irq, lima_mmu_irq_handler,
+ 			       IRQF_SHARED, lima_ip_name(ip), ip);
+ 	if (err) {
+-		dev_err(dev->dev, "mmu %s fail to request irq\n", lima_ip_name(ip));
++		dev_err(dev->dev, "%s fail to request irq\n", lima_ip_name(ip));
+ 		return err;
+ 	}
+ 
+@@ -152,7 +152,7 @@ void lima_mmu_page_fault_resume(struct lima_ip *ip)
+ 	u32 v;
+ 
+ 	if (status & LIMA_MMU_STATUS_PAGE_FAULT_ACTIVE) {
+-		dev_info(dev->dev, "mmu resume\n");
++		dev_info(dev->dev, "%s resume\n", lima_ip_name(ip));
+ 
+ 		mmu_write(LIMA_MMU_INT_MASK, 0);
+ 		mmu_write(LIMA_MMU_DTE_ADDR, 0xCAFEBABE);
+diff --git a/drivers/gpu/drm/lima/lima_pmu.c b/drivers/gpu/drm/lima/lima_pmu.c
+index e397e1146e96..113cb9b215cd 100644
+--- a/drivers/gpu/drm/lima/lima_pmu.c
++++ b/drivers/gpu/drm/lima/lima_pmu.c
+@@ -21,7 +21,8 @@ static int lima_pmu_wait_cmd(struct lima_ip *ip)
+ 				 v, v & LIMA_PMU_INT_CMD_MASK,
+ 				 100, 100000);
+ 	if (err) {
+-		dev_err(dev->dev, "timeout wait pmu cmd\n");
++		dev_err(dev->dev, "%s timeout wait pmu cmd\n",
++			lima_ip_name(ip));
+ 		return err;
+ 	}
+ 
+diff --git a/drivers/gpu/drm/lima/lima_pp.c b/drivers/gpu/drm/lima/lima_pp.c
+index ac097dd75072..d0d2db0ef1ce 100644
+--- a/drivers/gpu/drm/lima/lima_pp.c
++++ b/drivers/gpu/drm/lima/lima_pp.c
+@@ -26,8 +26,8 @@ static void lima_pp_handle_irq(struct lima_ip *ip, u32 state)
+ 	if (state & LIMA_PP_IRQ_MASK_ERROR) {
+ 		u32 status = pp_read(LIMA_PP_STATUS);
+ 
+-		dev_err(dev->dev, "pp error irq state=%x status=%x\n",
+-			state, status);
++		dev_err(dev->dev, "%s error irq state=%x status=%x\n",
++			lima_ip_name(ip), state, status);
+ 
+ 		pipe->error = true;
+ 
+@@ -125,7 +125,7 @@ static int lima_pp_soft_reset_async_wait_one(struct lima_ip *ip)
+ 
+ 	ret = lima_poll_timeout(ip, lima_pp_soft_reset_poll, 0, 100);
+ 	if (ret) {
+-		dev_err(dev->dev, "pp %s reset time out\n", lima_ip_name(ip));
++		dev_err(dev->dev, "%s reset time out\n", lima_ip_name(ip));
+ 		return ret;
+ 	}
+ 
+@@ -190,14 +190,14 @@ static int lima_pp_hard_reset(struct lima_ip *ip)
+ 	pp_write(LIMA_PP_CTRL, LIMA_PP_CTRL_STOP_BUS);
+ 	ret = lima_poll_timeout(ip, lima_pp_bus_stop_poll, 10, 100);
+ 	if (ret) {
+-		dev_err(dev->dev, "pp %s bus stop timeout\n", lima_ip_name(ip));
++		dev_err(dev->dev, "%s bus stop timeout\n", lima_ip_name(ip));
+ 		return ret;
+ 	}
+ 
+ 	pp_write(LIMA_PP_CTRL, LIMA_PP_CTRL_FORCE_RESET);
+ 	ret = lima_poll_timeout(ip, lima_pp_hard_reset_poll, 10, 100);
+ 	if (ret) {
+-		dev_err(dev->dev, "pp hard reset timeout\n");
++		dev_err(dev->dev, "%s hard reset timeout\n", lima_ip_name(ip));
+ 		return ret;
+ 	}
+ 
+@@ -274,7 +274,7 @@ int lima_pp_init(struct lima_ip *ip)
+ 	err = devm_request_irq(dev->dev, ip->irq, lima_pp_irq_handler,
+ 			       IRQF_SHARED, lima_ip_name(ip), ip);
+ 	if (err) {
+-		dev_err(dev->dev, "pp %s fail to request irq\n",
++		dev_err(dev->dev, "%s fail to request irq\n",
+ 			lima_ip_name(ip));
+ 		return err;
+ 	}
+@@ -309,7 +309,7 @@ int lima_pp_bcast_init(struct lima_ip *ip)
+ 	err = devm_request_irq(dev->dev, ip->irq, lima_pp_bcast_irq_handler,
+ 			       IRQF_SHARED, lima_ip_name(ip), ip);
+ 	if (err) {
+-		dev_err(dev->dev, "pp %s fail to request irq\n",
++		dev_err(dev->dev, "%s fail to request irq\n",
+ 			lima_ip_name(ip));
+ 		return err;
+ 	}
+@@ -423,8 +423,9 @@ static void lima_pp_task_error(struct lima_sched_pipe *pipe)
+ 	for (i = 0; i < pipe->num_processor; i++) {
+ 		struct lima_ip *ip = pipe->processor[i];
+ 
+-		dev_err(ip->dev->dev, "pp task error %d int_state=%x status=%x\n",
+-			i, pp_read(LIMA_PP_INT_STATUS), pp_read(LIMA_PP_STATUS));
++		dev_err(ip->dev->dev, "%s task error %d int_state=%x status=%x\n",
++			lima_ip_name(ip), i, pp_read(LIMA_PP_INT_STATUS),
++			pp_read(LIMA_PP_STATUS));
+ 
+ 		lima_pp_hard_reset(ip);
+ 	}
+-- 
+2.43.0
+
+From 2e4e0bb24da24a74751d810c597b33e2f932869f Mon Sep 17 00:00:00 2001
+From: Zhipeng Lu <alexious@zju.edu.cn>
+Date: Wed, 17 Jan 2024 15:13:28 +0800
+Subject: [PATCH 9/9] drm/lima: fix a memleak in lima_heap_alloc
+
+When lima_vm_map_bo fails, the resources need to be deallocated, or
+there will be memleaks.
+
+Fixes: 6aebc51d7aef ("drm/lima: support heap buffer creation")
+Signed-off-by: Zhipeng Lu <alexious@zju.edu.cn>
+Reviewed-by: Qiang Yu <yuq825@gmail.com>
+---
+ drivers/gpu/drm/lima/lima_gem.c | 23 +++++++++++++++--------
+ 1 file changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/lima/lima_gem.c b/drivers/gpu/drm/lima/lima_gem.c
+index 4f9736e5f929..d3d82ee7fb4c 100644
+--- a/drivers/gpu/drm/lima/lima_gem.c
++++ b/drivers/gpu/drm/lima/lima_gem.c
+@@ -75,29 +75,36 @@ int lima_heap_alloc(struct lima_bo *bo, struct lima_vm *vm)
+ 	} else {
+ 		bo->base.sgt = kmalloc(sizeof(*bo->base.sgt), GFP_KERNEL);
+ 		if (!bo->base.sgt) {
+-			sg_free_table(&sgt);
+-			return -ENOMEM;
++			ret = -ENOMEM;
++			goto err_out0;
+ 		}
+ 	}
+ 
+ 	ret = dma_map_sgtable(dev, &sgt, DMA_BIDIRECTIONAL, 0);
+ 	if (ret) {
+-		sg_free_table(&sgt);
+-		kfree(bo->base.sgt);
+-		bo->base.sgt = NULL;
+-		return ret;
++		goto err_out1;
+ 	}
+ 
+ 	*bo->base.sgt = sgt;
+ 
+ 	if (vm) {
+ 		ret = lima_vm_map_bo(vm, bo, old_size >> PAGE_SHIFT);
+-		if (ret)
+-			return ret;
++		if (ret) {
++			goto err_out2;
++		}
+ 	}
+ 
+ 	bo->heap_size = new_size;
+ 	return 0;
++
++err_out2:
++	dma_unmap_sgtable(dev, &sgt, DMA_BIDIRECTIONAL, 0);
++err_out1:
++	kfree(bo->base.sgt);
++	bo->base.sgt = NULL;
++err_out0:
++	sg_free_table(&sgt);
++	return ret;
+ }
+ 
+ int lima_gem_create_handle(struct drm_device *dev, struct drm_file *file,
+-- 
+2.43.0
+
