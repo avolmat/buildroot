@@ -1,0 +1,590 @@
+From c73d957e51780946f5af38c41526c61c854d9965 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:39 +0200
+Subject: [PATCH 1/8] drm/dumb-buffers: Fix drm_mode_create_dumb() for bpp < 8
+
+drm_mode_create_dumb() calculates the number of characters per pixel
+from the number of bits per pixel by rounding up, which is not correct
+as the actual value of cpp may be non-integer.  While we do not need to
+care here about complex formats like YUV, bpp < 8 is a valid use case.
+
+  - The overflow check for the buffer width is not correct if bpp < 8.
+    However, it doesn't hurt, as widths larger than U32_MAX / 8 should
+    not happen for real anyway.  Add a comment to clarify.
+  - Calculating the stride from the number of characters per pixel is
+    not correct.  Fix this by calculating it from the number of bits per
+    pixel instead.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/drm_dumb_buffers.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/drm_dumb_buffers.c b/drivers/gpu/drm/drm_dumb_buffers.c
+index 70032bba1c97..21a04c32a5e3 100644
+--- a/drivers/gpu/drm/drm_dumb_buffers.c
++++ b/drivers/gpu/drm/drm_dumb_buffers.c
+@@ -71,10 +71,11 @@ int drm_mode_create_dumb(struct drm_device *dev,
+ 	/* overflow checks for 32bit size calculations */
+ 	if (args->bpp > U32_MAX - 8)
+ 		return -EINVAL;
++	/* Incorrect (especially if bpp < 8), but doesn't hurt much */
+ 	cpp = DIV_ROUND_UP(args->bpp, 8);
+ 	if (cpp > U32_MAX / args->width)
+ 		return -EINVAL;
+-	stride = cpp * args->width;
++	stride = DIV_ROUND_UP(args->bpp * args->width, 8);
+ 	if (args->height > U32_MAX / stride)
+ 		return -EINVAL;
+ 
+-- 
+2.25.1
+
+
+From acea7faa46a31c0195c5110741d11ef653be2deb Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:41 +0200
+Subject: [PATCH 2/8] drm/ssd130x: Use bool for ssd130x_deviceinfo flags
+
+The .need_pwm and .need_chargepump fields in struct ssd130x_deviceinfo
+are flags that can have only two possible values: 0 and 1.
+Reduce kernel size by changing their types from int to bool.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/solomon/ssd130x.h | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/solomon/ssd130x.h b/drivers/gpu/drm/solomon/ssd130x.h
+index 87968b3e7fb8..aa39b13615eb 100644
+--- a/drivers/gpu/drm/solomon/ssd130x.h
++++ b/drivers/gpu/drm/solomon/ssd130x.h
+@@ -40,8 +40,8 @@ struct ssd130x_deviceinfo {
+ 	u32 default_width;
+ 	u32 default_height;
+ 	u32 page_height;
+-	int need_pwm;
+-	int need_chargepump;
++	bool need_pwm;
++	bool need_chargepump;
+ 	bool page_mode_only;
+ };
+ 
+-- 
+2.25.1
+
+
+From 524d60d72b8d628597c749278ff8864d1d270ef5 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:42 +0200
+Subject: [PATCH 3/8] drm/ssd130x: Add support for DRM_FORMAT_R1
+
+The native display format is monochrome light-on-dark (R1).
+Hence add support for R1, so monochrome applications not only look
+better, but also avoid the overhead of back-and-forth conversions
+between R1 and XR24.
+
+Do not allocate the intermediate conversion buffer when it is not
+needed, and reorder the two buffer allocations to streamline operation.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/solomon/ssd130x.c | 76 +++++++++++++++++++++----------
+ 1 file changed, 51 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/gpu/drm/solomon/ssd130x.c b/drivers/gpu/drm/solomon/ssd130x.c
+index 78272b1f9d5b..18007cb4f3de 100644
+--- a/drivers/gpu/drm/solomon/ssd130x.c
++++ b/drivers/gpu/drm/solomon/ssd130x.c
+@@ -449,15 +449,14 @@ static int ssd130x_init(struct ssd130x_device *ssd130x)
+ 
+ static int ssd130x_update_rect(struct ssd130x_device *ssd130x,
+ 			       struct ssd130x_plane_state *ssd130x_state,
++			       u8 *buf, unsigned int pitch,
+ 			       struct drm_rect *rect)
+ {
+ 	unsigned int x = rect->x1;
+ 	unsigned int y = rect->y1;
+-	u8 *buf = ssd130x_state->buffer;
+ 	u8 *data_array = ssd130x_state->data_array;
+ 	unsigned int width = drm_rect_width(rect);
+ 	unsigned int height = drm_rect_height(rect);
+-	unsigned int line_length = DIV_ROUND_UP(width, 8);
+ 	unsigned int page_height = ssd130x->device_info->page_height;
+ 	unsigned int pages = DIV_ROUND_UP(height, page_height);
+ 	struct drm_device *drm = &ssd130x->drm;
+@@ -516,7 +515,7 @@ static int ssd130x_update_rect(struct ssd130x_device *ssd130x,
+ 			u8 data = 0;
+ 
+ 			for (k = 0; k < m; k++) {
+-				u8 byte = buf[(8 * i + k) * line_length + j / 8];
++				u8 byte = buf[(8 * i + k) * pitch + j / 8];
+ 				u8 bit = (byte >> (j % 8)) & 1;
+ 
+ 				data |= bit << k;
+@@ -602,27 +601,51 @@ static int ssd130x_fb_blit_rect(struct drm_plane_state *state,
+ 	struct ssd130x_device *ssd130x = drm_to_ssd130x(fb->dev);
+ 	unsigned int page_height = ssd130x->device_info->page_height;
+ 	struct ssd130x_plane_state *ssd130x_state = to_ssd130x_plane_state(state);
+-	u8 *buf = ssd130x_state->buffer;
+ 	struct iosys_map dst;
+ 	unsigned int dst_pitch;
+ 	int ret = 0;
++	u8 *buf;
+ 
+ 	/* Align y to display page boundaries */
+ 	rect->y1 = round_down(rect->y1, page_height);
+ 	rect->y2 = min_t(unsigned int, round_up(rect->y2, page_height), ssd130x->height);
+ 
+-	dst_pitch = DIV_ROUND_UP(drm_rect_width(rect), 8);
++	switch (fb->format->format) {
++	case DRM_FORMAT_R1:
++		/* Align x to byte boundaries */
++		rect->x1 = round_down(rect->x1, 8);
++		rect->x2 = round_up(rect->x2, 8);
+ 
+-	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
+-	if (ret)
+-		return ret;
++		ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
++		if (ret)
++			return ret;
++
++		dst_pitch = fb->pitches[0];
++		buf = vmap[0].vaddr + rect->y1 * dst_pitch + rect->x1 / 8;
++
++		ssd130x_update_rect(ssd130x, ssd130x_state, buf, dst_pitch,
++				    rect);
++
++		drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
++		break;
++
++	case DRM_FORMAT_XRGB8888:
++		dst_pitch = DIV_ROUND_UP(drm_rect_width(rect), 8);
++		buf = ssd130x_state->buffer;
++
++		ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
++		if (ret)
++			return ret;
+ 
+-	iosys_map_set_vaddr(&dst, buf);
+-	drm_fb_xrgb8888_to_mono(&dst, &dst_pitch, vmap, fb, rect);
++		iosys_map_set_vaddr(&dst, buf);
++		drm_fb_xrgb8888_to_mono(&dst, &dst_pitch, vmap, fb, rect);
+ 
+-	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
++		drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
+ 
+-	ssd130x_update_rect(ssd130x, ssd130x_state, rect);
++		ssd130x_update_rect(ssd130x, ssd130x_state, buf, dst_pitch,
++				    rect);
++		break;
++	}
+ 
+ 	return ret;
+ }
+@@ -644,22 +667,24 @@ static int ssd130x_primary_plane_helper_atomic_check(struct drm_plane *plane,
+ 	if (ret)
+ 		return ret;
+ 
+-	fi = drm_format_info(DRM_FORMAT_R1);
+-	if (!fi)
+-		return -EINVAL;
++	ssd130x_state->data_array = kcalloc(ssd130x->width, pages, GFP_KERNEL);
++	if (!ssd130x_state->data_array)
++		return -ENOMEM;
+ 
+-	pitch = drm_format_info_min_pitch(fi, 0, ssd130x->width);
++	if (plane_state->fb->format->format != DRM_FORMAT_R1) {
++		fi = drm_format_info(DRM_FORMAT_R1);
++		if (!fi)
++			return -EINVAL;
+ 
+-	ssd130x_state->buffer = kcalloc(pitch, ssd130x->height, GFP_KERNEL);
+-	if (!ssd130x_state->buffer)
+-		return -ENOMEM;
++		pitch = drm_format_info_min_pitch(fi, 0, ssd130x->width);
+ 
+-	ssd130x_state->data_array = kcalloc(ssd130x->width, pages, GFP_KERNEL);
+-	if (!ssd130x_state->data_array) {
+-		kfree(ssd130x_state->buffer);
+-		/* Set to prevent a double free in .atomic_destroy_state() */
+-		ssd130x_state->buffer = NULL;
+-		return -ENOMEM;
++		ssd130x_state->buffer = kcalloc(pitch, ssd130x->height, GFP_KERNEL);
++		if (!ssd130x_state->buffer) {
++			kfree(ssd130x_state->data_array);
++			/* Set to prevent a double free in .atomic_destroy_state() */
++			ssd130x_state->data_array = NULL;
++			return -ENOMEM;
++		}
+ 	}
+ 
+ 	return 0;
+@@ -898,6 +923,7 @@ static const struct drm_mode_config_funcs ssd130x_mode_config_funcs = {
+ };
+ 
+ static const uint32_t ssd130x_formats[] = {
++	DRM_FORMAT_R1,
+ 	DRM_FORMAT_XRGB8888,
+ };
+ 
+-- 
+2.25.1
+
+
+From 49492e3b81e25a3576dcc85712d5ee91d7e8e3d9 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:43 +0200
+Subject: [PATCH 4/8] drm/client: Convert drm_client_buffer_addfb() to
+ drm_mode_addfb2()
+
+Currently drm_client_buffer_addfb() uses the legacy drm_mode_addfb(),
+which uses bpp and depth to guess the wanted buffer format.
+However, drm_client_buffer_addfb() already knows the exact buffer
+format, so there is no need to convert back and forth between buffer
+format and bpp/depth, and the function can just call drm_mode_addfb2()
+directly instead.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/drm_client.c | 13 +++++--------
+ 1 file changed, 5 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_client.c b/drivers/gpu/drm/drm_client.c
+index 037e36f2049c..0ced189befeb 100644
+--- a/drivers/gpu/drm/drm_client.c
++++ b/drivers/gpu/drm/drm_client.c
+@@ -395,19 +395,16 @@ static int drm_client_buffer_addfb(struct drm_client_buffer *buffer,
+ 				   u32 handle)
+ {
+ 	struct drm_client_dev *client = buffer->client;
+-	struct drm_mode_fb_cmd fb_req = { };
+-	const struct drm_format_info *info;
++	struct drm_mode_fb_cmd2 fb_req = { };
+ 	int ret;
+ 
+-	info = drm_format_info(format);
+-	fb_req.bpp = drm_format_info_bpp(info, 0);
+-	fb_req.depth = info->depth;
+ 	fb_req.width = width;
+ 	fb_req.height = height;
+-	fb_req.handle = handle;
+-	fb_req.pitch = buffer->pitch;
++	fb_req.pixel_format = format;
++	fb_req.handles[0] = handle;
++	fb_req.pitches[0] = buffer->pitch;
+ 
+-	ret = drm_mode_addfb(client->dev, &fb_req, client->file);
++	ret = drm_mode_addfb2(client->dev, &fb_req, client->file);
+ 	if (ret)
+ 		return ret;
+ 
+-- 
+2.25.1
+
+
+From 24521fb3ab03fa61eee1b15e5d718563d46ea23b Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:44 +0200
+Subject: [PATCH 5/8] drm/fb-helper: Pass buffer format via
+ drm_fb_helper_surface_size
+
+drm_fb_helper_single_fb_probe() first calls drm_fb_helper_find_sizes(),
+followed by drm_fbdev_generic_helper_fb_probe():
+  - The former tries to find a suitable buffer format, taking into
+    account limitations of the whole display pipeline,
+  - The latter just calls drm_mode_legacy_fb_format() again.
+
+Simplify this by passing the buffer format between these functions
+via a new buffer format member in the drm_fb_helper_surface_size
+structure.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/drm_fb_helper.c     | 1 +
+ drivers/gpu/drm/drm_fbdev_generic.c | 9 ++++-----
+ include/drm/drm_fb_helper.h         | 2 ++
+ 3 files changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_fb_helper.c b/drivers/gpu/drm/drm_fb_helper.c
+index d612133e2cf7..4dc28fdcc1e0 100644
+--- a/drivers/gpu/drm/drm_fb_helper.c
++++ b/drivers/gpu/drm/drm_fb_helper.c
+@@ -1564,6 +1564,7 @@ static int __drm_fb_helper_find_sizes(struct drm_fb_helper *fb_helper,
+ 	info = drm_format_info(surface_format);
+ 	sizes->surface_bpp = drm_format_info_bpp(info, 0);
+ 	sizes->surface_depth = info->depth;
++	sizes->surface_format = surface_format;
+ 
+ 	/* first up get a count of crtcs now in use and new min/maxes width/heights */
+ 	crtc_count = 0;
+diff --git a/drivers/gpu/drm/drm_fbdev_generic.c b/drivers/gpu/drm/drm_fbdev_generic.c
+index d647d89764cb..3830d25bcc3a 100644
+--- a/drivers/gpu/drm/drm_fbdev_generic.c
++++ b/drivers/gpu/drm/drm_fbdev_generic.c
+@@ -77,16 +77,15 @@ static int drm_fbdev_generic_helper_fb_probe(struct drm_fb_helper *fb_helper,
+ 	struct fb_info *info;
+ 	size_t screen_size;
+ 	void *screen_buffer;
+-	u32 format;
+ 	int ret;
+ 
+-	drm_dbg_kms(dev, "surface width(%d), height(%d) and bpp(%d)\n",
++	drm_dbg_kms(dev, "surface width(%d), height(%d), bpp(%d) and format(%p4cc)\n",
+ 		    sizes->surface_width, sizes->surface_height,
+-		    sizes->surface_bpp);
++		    sizes->surface_bpp, &sizes->surface_format);
+ 
+-	format = drm_mode_legacy_fb_format(sizes->surface_bpp, sizes->surface_depth);
+ 	buffer = drm_client_framebuffer_create(client, sizes->surface_width,
+-					       sizes->surface_height, format);
++					       sizes->surface_height,
++					       sizes->surface_format);
+ 	if (IS_ERR(buffer))
+ 		return PTR_ERR(buffer);
+ 
+diff --git a/include/drm/drm_fb_helper.h b/include/drm/drm_fb_helper.h
+index 375737fd6c36..aa3d62a531d1 100644
+--- a/include/drm/drm_fb_helper.h
++++ b/include/drm/drm_fb_helper.h
+@@ -45,6 +45,7 @@ struct drm_fb_helper;
+  * @surface_height: scanout buffer height
+  * @surface_bpp: scanout buffer bpp
+  * @surface_depth: scanout buffer depth
++ * @surface_format: scanout buffer format (optional)
+  *
+  * Note that the scanout surface width/height may be larger than the fbdev
+  * width/height.  In case of multiple displays, the scanout surface is sized
+@@ -61,6 +62,7 @@ struct drm_fb_helper_surface_size {
+ 	u32 surface_height;
+ 	u32 surface_bpp;
+ 	u32 surface_depth;
++	u32 surface_format;
+ };
+ 
+ /**
+-- 
+2.25.1
+
+
+From cefb26acb5e3ff8073f37e1b3c3c06197c49b227 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:45 +0200
+Subject: [PATCH 6/8] drm/fb-helper: Add support for DRM_FORMAT_R1
+
+Add support for the monochrome light-on-dark buffer format (R1) to the
+fb helper, so this format can be used for fbdev emulation and for the
+text console.  This avoids the overhead of using XR24 and the associated
+conversions on display hardware that supports only a simple monochrome
+format.
+
+R1 is very similar to C1 (monochrome indexed color), and shares the same
+depth and bpp.  As drm_mode_legacy_fb_format() returns a format based on
+only depth and bpp, it cannot distinguish between R1 and C1.  Hence
+drm_fb_helper_find_format() is modified to try to fall back to R1 if C1
+is not supported.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/drm_fb_helper.c | 41 ++++++++++++++++++++++++---------
+ 1 file changed, 30 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/gpu/drm/drm_fb_helper.c b/drivers/gpu/drm/drm_fb_helper.c
+index 4dc28fdcc1e0..71baf8597516 100644
+--- a/drivers/gpu/drm/drm_fb_helper.c
++++ b/drivers/gpu/drm/drm_fb_helper.c
+@@ -1130,7 +1130,7 @@ static void drm_fb_helper_fill_pixel_fmt(struct fb_var_screeninfo *var,
+ {
+ 	u8 depth = format->depth;
+ 
+-	if (format->is_color_indexed) {
++	if (format->format == DRM_FORMAT_R1 || format->is_color_indexed) {
+ 		var->red.offset = 0;
+ 		var->green.offset = 0;
+ 		var->blue.offset = 0;
+@@ -1236,6 +1236,7 @@ int drm_fb_helper_check_var(struct fb_var_screeninfo *var,
+ 	case DRM_FORMAT_C1:
+ 	case DRM_FORMAT_C2:
+ 	case DRM_FORMAT_C4:
++	case DRM_FORMAT_R1:
+ 		/* supported format with sub-byte pixels */
+ 		break;
+ 
+@@ -1439,12 +1440,24 @@ int drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
+ }
+ EXPORT_SYMBOL(drm_fb_helper_pan_display);
+ 
++static bool is_supported_format(uint32_t format, const uint32_t *formats,
++				size_t format_count)
++{
++	size_t i;
++
++	for (i = 0; i < format_count; ++i) {
++		if (formats[i] == format)
++			return true;
++	}
++
++	return false;
++}
++
+ static uint32_t drm_fb_helper_find_format(struct drm_fb_helper *fb_helper, const uint32_t *formats,
+ 					  size_t format_count, uint32_t bpp, uint32_t depth)
+ {
+ 	struct drm_device *dev = fb_helper->dev;
+ 	uint32_t format;
+-	size_t i;
+ 
+ 	/*
+ 	 * Do not consider YUV or other complicated formats
+@@ -1457,10 +1470,12 @@ static uint32_t drm_fb_helper_find_format(struct drm_fb_helper *fb_helper, const
+ 	if (!format)
+ 		goto err;
+ 
+-	for (i = 0; i < format_count; ++i) {
+-		if (formats[i] == format)
+-			return format;
+-	}
++	if (is_supported_format(format, formats, format_count))
++		return format;
++
++	if (format == DRM_FORMAT_C1 &&
++	    is_supported_format(DRM_FORMAT_R1, formats, format_count))
++		return DRM_FORMAT_R1;
+ 
+ err:
+ 	/* We found nothing. */
+@@ -1680,11 +1695,15 @@ static int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper)
+ }
+ 
+ static void drm_fb_helper_fill_fix(struct fb_info *info, uint32_t pitch,
+-				   bool is_color_indexed)
++				   const struct drm_format_info *format)
+ {
+ 	info->fix.type = FB_TYPE_PACKED_PIXELS;
+-	info->fix.visual = is_color_indexed ? FB_VISUAL_PSEUDOCOLOR
+-					    : FB_VISUAL_TRUECOLOR;
++	if (format->format == DRM_FORMAT_R1)
++		info->fix.visual = FB_VISUAL_MONO10;
++	else if (format->is_color_indexed)
++		info->fix.visual = FB_VISUAL_PSEUDOCOLOR;
++	else
++		info->fix.visual = FB_VISUAL_TRUECOLOR;
+ 	info->fix.mmio_start = 0;
+ 	info->fix.mmio_len = 0;
+ 	info->fix.type_aux = 0;
+@@ -1707,6 +1726,7 @@ static void drm_fb_helper_fill_var(struct fb_info *info,
+ 	case DRM_FORMAT_C1:
+ 	case DRM_FORMAT_C2:
+ 	case DRM_FORMAT_C4:
++	case DRM_FORMAT_R1:
+ 		/* supported format with sub-byte pixels */
+ 		break;
+ 
+@@ -1747,8 +1767,7 @@ void drm_fb_helper_fill_info(struct fb_info *info,
+ {
+ 	struct drm_framebuffer *fb = fb_helper->fb;
+ 
+-	drm_fb_helper_fill_fix(info, fb->pitches[0],
+-			       fb->format->is_color_indexed);
++	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->format);
+ 	drm_fb_helper_fill_var(info, fb_helper,
+ 			       sizes->fb_width, sizes->fb_height);
+ 
+-- 
+2.25.1
+
+
+From 10005bb5a3b7ac74cbdacbde47b2ca8d264d0229 Mon Sep 17 00:00:00 2001
+From: Geert Uytterhoeven <geert@linux-m68k.org>
+Date: Thu, 24 Aug 2023 17:08:46 +0200
+Subject: [PATCH 7/8] drm/ssd130x: Switch preferred_bpp/depth to 1
+
+The native display format is R1.  Hence change the preferred_depth and
+preferred_bpp to 1, to avoid the overhead of using XR24 and the
+associated conversions when using fbdev emulation and its text console.
+
+Signed-off-by: Geert Uytterhoeven <geert@linux-m68k.org>
+Reviewed-by: Javier Martinez Canillas <javierm@redhat.com>
+Tested-by: Javier Martinez Canillas <javierm@redhat.com>
+---
+ drivers/gpu/drm/solomon/ssd130x.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/solomon/ssd130x.c b/drivers/gpu/drm/solomon/ssd130x.c
+index 18007cb4f3de..0d2b36ba4011 100644
+--- a/drivers/gpu/drm/solomon/ssd130x.c
++++ b/drivers/gpu/drm/solomon/ssd130x.c
+@@ -1049,7 +1049,7 @@ static int ssd130x_init_modeset(struct ssd130x_device *ssd130x)
+ 	drm->mode_config.max_width = max_width;
+ 	drm->mode_config.min_height = mode->vdisplay;
+ 	drm->mode_config.max_height = max_height;
+-	drm->mode_config.preferred_depth = 24;
++	drm->mode_config.preferred_depth = 1;
+ 	drm->mode_config.funcs = &ssd130x_mode_config_funcs;
+ 
+ 	/* Primary plane */
+@@ -1179,7 +1179,7 @@ struct ssd130x_device *ssd130x_probe(struct device *dev, struct regmap *regmap)
+ 	if (ret)
+ 		return ERR_PTR(dev_err_probe(dev, ret, "DRM device register failed\n"));
+ 
+-	drm_fbdev_generic_setup(drm, 32);
++	drm_fbdev_generic_setup(drm, 1);
+ 
+ 	return ssd130x;
+ }
+-- 
+2.25.1
+
+
+From d410b3213b7bcfbc2d6f3bd2f7065b812fc3f358 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Mon, 18 Sep 2023 18:10:00 +0200
+Subject: [PATCH 8/8] drm/ssd130x: Fix NULL pointer dereference during reboot
+
+Add sanity check for "plane_state->fb" which may be NULL during reboot
+
+stacktrace:
+  Unable to handle kernel NULL pointer dereference at virtual address 00000030 when read
+  ssd130x_primary_plane_helper_atomic_check [ssd130x] from drm_atomic_helper_check_planes+0xe4/0x22c [drm_kms_helper]
+  drm_atomic_helper_check_planes [drm_kms_helper] from drm_atomic_helper_check+0x4c/0x94 [drm_kms_helper]
+  drm_atomic_helper_check [drm_kms_helper] from drm_atomic_check_only+0x6a8/0xa30 [drm]
+  drm_atomic_check_only [drm] from drm_atomic_commit+0x70/0xe8 [drm]
+  drm_atomic_commit [drm] from drm_atomic_helper_disable_all+0x1c0/0x1d0 [drm_kms_helper]
+  drm_atomic_helper_disable_all [drm_kms_helper] from drm_atomic_helper_shutdown+0x90/0x144 [drm_kms_helper]
+  drm_atomic_helper_shutdown [drm_kms_helper] from device_shutdown+0x17c/0x234
+  device_shutdown from kernel_restart+0x40/0x98
+  kernel_restart from __do_sys_reboot+0x10c/0x200
+  __do_sys_reboot from ret_fast_syscall+0x0/0x1c
+---
+ drivers/gpu/drm/solomon/ssd130x.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/solomon/ssd130x.c b/drivers/gpu/drm/solomon/ssd130x.c
+index 0d2b36ba4011..e57ab50b36cc 100644
+--- a/drivers/gpu/drm/solomon/ssd130x.c
++++ b/drivers/gpu/drm/solomon/ssd130x.c
+@@ -671,7 +671,7 @@ static int ssd130x_primary_plane_helper_atomic_check(struct drm_plane *plane,
+ 	if (!ssd130x_state->data_array)
+ 		return -ENOMEM;
+ 
+-	if (plane_state->fb->format->format != DRM_FORMAT_R1) {
++	if (plane_state->fb && (plane_state->fb->format->format != DRM_FORMAT_R1)) {
+ 		fi = drm_format_info(DRM_FORMAT_R1);
+ 		if (!fi)
+ 			return -EINVAL;
+-- 
+2.25.1
+
