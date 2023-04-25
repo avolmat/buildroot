@@ -1,0 +1,4123 @@
+From 0496d3323ad8a5b9b08b62c9d01a4e39ab53f5b4 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Mon, 20 Apr 2020 21:35:14 +0200
+Subject: [PATCH 01/55] dt-bindings: pci: st-pcie: PCIe controller found on STi
+ platforms
+
+Addition of the bindings for the Designware based PCIe controller
+that can be found on STi platforms such as STiH407, STiH410 or STiH418.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ .../devicetree/bindings/pci/snps,dw-pcie.yaml |   3 +
+ .../devicetree/bindings/pci/st,st-pcie.yaml   | 112 ++++++++++++++++++
+ 2 files changed, 115 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/pci/st,st-pcie.yaml
+
+diff --git a/Documentation/devicetree/bindings/pci/snps,dw-pcie.yaml b/Documentation/devicetree/bindings/pci/snps,dw-pcie.yaml
+index 1a83f0f65f19..f2a04532e140 100644
+--- a/Documentation/devicetree/bindings/pci/snps,dw-pcie.yaml
++++ b/Documentation/devicetree/bindings/pci/snps,dw-pcie.yaml
+@@ -92,6 +92,9 @@ properties:
+             Outbound iATU-capable memory-region which will be used to access
+             the peripheral PCIe devices configuration space.
+           const: config
++        - description:
++            mem regions: fixme!
++          const: mem-window
+         - description:
+             Vendor-specific CSR names. Consider using the generic names above
+             for new bindings.
+diff --git a/Documentation/devicetree/bindings/pci/st,st-pcie.yaml b/Documentation/devicetree/bindings/pci/st,st-pcie.yaml
+new file mode 100644
+index 000000000000..4d19657f3ec2
+--- /dev/null
++++ b/Documentation/devicetree/bindings/pci/st,st-pcie.yaml
+@@ -0,0 +1,112 @@
++# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/pci/st,st-pcie.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: PCIe RC controller on ST STi platform
++
++maintainers:
++  - Alain Volmat <avolmat@me.com>
++
++allOf:
++  - $ref: /schemas/pci/snps,dw-pcie.yaml#
++
++properties:
++  compatible:
++    const: st,stih407-pcie
++
++  reg:
++    items:
++      - description: Controller control and status registers.
++      - description: PCIe configuration registers.
++      - description: Memory made available to the controller
++
++  reg-names:
++    items:
++      - const: dbi
++      - const: config
++      - const: mem-window
++
++  interrupts:
++    maxItems: 1
++
++  resets:
++    items:
++    - description: Controller reset
++    - description: Powerdown reset
++    minItems: 1
++
++  reset-names:
++    items:
++      - const: softreset
++      - const: powerdown
++    minItems: 1
++
++  phys:
++    maxItems: 1
++
++  phy-names:
++    const: pcie
++
++  reset-gpios: true
++
++  st,syscfg:
++    $ref: "/schemas/types.yaml#/definitions/phandle-array"
++    description: syscfg node phandle and offsets of the 2 registers
++                 controlling root complex and ltssm.
++
++required:
++  - interrupts
++  - '#interrupt-cells'
++  - interrupt-map
++  - interrupt-map-mask
++  - resets
++  - reset-names
++  - phys
++  - phy-names
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/gpio/gpio.h>
++    #include <dt-bindings/interrupt-controller/irq.h>
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++    #include <dt-bindings/phy/phy.h>
++    #include <dt-bindings/reset/stih407-resets.h>
++    pcie1: pcie@9b10000 {
++      compatible = "st,stih407-pcie";
++      device_type = "pci";
++      #address-cells = <3>;
++      #size-cells = <2>;
++      reg = <0x09b10000 0x1000>,
++            <0x3fff0000 0x10000>,
++            <0x40000000 0xc0000000>;
++      reg-names = "dbi", "config", "mem-window";
++
++      #interrupt-cells = <1>;
++      interrupts = <GIC_SPI 175 IRQ_TYPE_LEVEL_HIGH>;
++      interrupt-names = "msi";
++      interrupt-map-mask = <0 0 0 7>;
++      interrupt-map = <0 0 0 1 &intc GIC_SPI 171 IRQ_TYPE_LEVEL_HIGH>,
++                      <0 0 0 2 &intc GIC_SPI 172 IRQ_TYPE_LEVEL_HIGH>,
++                      <0 0 0 3 &intc GIC_SPI 173 IRQ_TYPE_LEVEL_HIGH>,
++                      <0 0 0 4 &intc GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
++
++      st,syscfg = <&syscfg_core 0xdc 0xe4>;
++
++      ranges = <0x82000000 0 0x30000000 0x30000000 0 0x05550000>, /* non-prefetchable memory */
++               <0xc2000000 0 0x35550000 0x35550000 0 0x0AAA0000>; /* prefetchable memory */
++      bus-range = <0x00 0xff>;
++
++      resets = <&softreset STIH407_PCIE1_SOFTRESET>,
++               <&powerdown STIH407_PCIE1_POWERDOWN>;
++
++      reset-names = "softreset", "powerdown";
++
++      phys = <&phy_port1 PHY_TYPE_PCIE>;
++      phy-names = "pcie";
++
++      reset-gpios = <&pio34 5 GPIO_ACTIVE_LOW>;
++    };
+-- 
+2.41.0
+
+From 3ce2be655981bedd21354c24f3099cf7762cc18b Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Sun, 22 Mar 2020 13:05:15 +0100
+Subject: [PATCH 02/55] pci: dwc: pcie-st: Add PCIe driver for STi platforms
+
+Addition of the PCIe driver (supporting RC) for controllers
+found on some STi platforms such as STiH407, STiH410 or
+STiH418.
+The controller is based on the designware PCIe controller.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+
+v2: update Kconfig depends
+    reorder in makefile
+    rework of reset_gpio using gpiod
+    don't cut at 80 characters but instead 100 characters
+    integrated st_pcie_board_reset content into start_link
+---
+ drivers/pci/controller/dwc/Kconfig    |  11 +
+ drivers/pci/controller/dwc/Makefile   |   1 +
+ drivers/pci/controller/dwc/pcie-sti.c | 379 ++++++++++++++++++++++++++
+ 3 files changed, 391 insertions(+)
+ create mode 100644 drivers/pci/controller/dwc/pcie-sti.c
+
+diff --git a/drivers/pci/controller/dwc/Kconfig b/drivers/pci/controller/dwc/Kconfig
+index ab96da43e0c2..ceb2ade8403f 100644
+--- a/drivers/pci/controller/dwc/Kconfig
++++ b/drivers/pci/controller/dwc/Kconfig
+@@ -415,4 +415,15 @@ config PCIE_VISCONTI_HOST
+ 	  Say Y here if you want PCIe controller support on Toshiba Visconti SoC.
+ 	  This driver supports TMPV7708 SoC.
+ 
++config PCIE_STI
++	bool "STMicroelectronics PCIe Controller for STi SoCs"
++	depends on ARCH_STI || COMPILE_TEST
++	depends on OF && PCI_MSI_IRQ_DOMAIN
++	select PCIE_DW_HOST
++	help
++	  Enable PCIe controller support on STMicroelectronics STi SoCs.
++	  This controller is based on Designware hardware and therefore
++	  the driver re-uses the Designware core functions to implement
++	  the driver.
++
+ endmenu
+diff --git a/drivers/pci/controller/dwc/Makefile b/drivers/pci/controller/dwc/Makefile
+index bf5c311875a1..df7ef6779cad 100644
+--- a/drivers/pci/controller/dwc/Makefile
++++ b/drivers/pci/controller/dwc/Makefile
+@@ -22,6 +22,7 @@ obj-$(CONFIG_PCIE_KEEMBAY) += pcie-keembay.o
+ obj-$(CONFIG_PCIE_KIRIN) += pcie-kirin.o
+ obj-$(CONFIG_PCIE_HISI_STB) += pcie-histb.o
+ obj-$(CONFIG_PCI_MESON) += pci-meson.o
++obj-$(CONFIG_PCIE_STI) += pcie-sti.o
+ obj-$(CONFIG_PCIE_TEGRA194) += pcie-tegra194.o
+ obj-$(CONFIG_PCIE_UNIPHIER) += pcie-uniphier.o
+ obj-$(CONFIG_PCIE_UNIPHIER_EP) += pcie-uniphier-ep.o
+diff --git a/drivers/pci/controller/dwc/pcie-sti.c b/drivers/pci/controller/dwc/pcie-sti.c
+new file mode 100644
+index 000000000000..2d8cc1bbbb44
+--- /dev/null
++++ b/drivers/pci/controller/dwc/pcie-sti.c
+@@ -0,0 +1,379 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2021 STMicroelectronics
++ *
++ * STMicroelectronics PCI express Driver for STi SoCs.
++ * ST PCIe IPs are built around a Synopsys IP Core.
++ *
++ * Authors: Fabrice Gasnier <fabrice.gasnier@foss.st.com>
++ *          Alain Volmat <avolmat@me.com>
++ */
++
++#include <linux/delay.h>
++#include <linux/interrupt.h>
++#include <linux/mfd/syscon.h>
++#include <linux/module.h>
++#include <linux/of_address.h>
++#include <linux/of_gpio.h>
++#include <linux/of_pci.h>
++#include <linux/of_platform.h>
++#include <linux/phy/phy.h>
++#include <linux/regmap.h>
++#include <linux/reset.h>
++
++#include "pcie-designware.h"
++
++/* RC_ADDRESS_TRANSLATION Registers */
++#define TRANSLATION_CONTROL		0x900
++/* Controls if area is inclusive or exclusive */
++#define RC_PASS_ADDR_RANGE		BIT(1)
++
++/* Base of area reserved for config accesses. Fixed size of 64K. */
++#define CFG_BASE_ADDRESS		0x92c
++#define CFG_REGION_SIZE			65536
++#define CFG_SPACE1_OFFSET		0x1000
++
++/* First 4K of config space has this BDF (bus,device,function) */
++#define FUNC0_BDF_NUM			0x930
++
++/* Mem regions */
++#define IN0_MEM_ADDR_START		0x964
++#define IN0_MEM_ADDR_LIMIT		0x968
++#define IN1_MEM_ADDR_START		0x974
++#define IN1_MEM_ADDR_LIMIT		0x978
++
++/* syscfg1 bits */
++#define PCIE_APP_LTSSM_ENABLE		BIT(2)
++/* syscfg0 bits */
++#define PCIE_TYPE_ROOT_COMPLEX		BIT(0)
++
++/* st,syscfg offsets */
++#define SYSCFG0_REG	1
++#define SYSCFG1_REG	2
++
++#define to_st_pcie(x)	dev_get_drvdata((x)->dev)
++
++/**
++ * struct st_pcie - private data of the controller
++ * @dw: designware pcie
++ * @syscfg0: PCIe conf register setting root complex, regmap offset
++ * @syscfg1: PCIe conf register for PCIE_APP_LTSSM_ENABLE, regmap offset
++ * @phy: associated pcie phy
++ * @lmi: memory made available to the controller
++ * @regmap: Syscfg registers bank in which PCIe port is configured
++ * @pwr: power control
++ * @rst: reset control
++ * @reset_gpio: optional reset gpio
++ * @config_window_start: start address of 64K config space area
++ */
++struct st_pcie {
++	struct dw_pcie *dw;
++	int syscfg0;
++	int syscfg1;
++	struct phy *phy;
++	struct resource	*lmi;
++	struct regmap *regmap;
++	struct reset_control *pwr;
++	struct reset_control *rst;
++	struct gpio_desc *reset_gpio;
++	phys_addr_t config_window_start;
++};
++
++/*
++ * The PCI express core IP expects the following arrangement on it's address
++ * bus (slv_haddr) when driving config cycles.
++ * bus_number		[31:24]
++ * dev_number		[23:19]
++ * func_number		[18:16]
++ * unused		[15:12]
++ * ext_reg_number	[11:8]
++ * reg_number		[7:2]
++ *
++ * Bits [15:12] are unused.
++ *
++ * In the glue logic there is a 64K region of address space that can be
++ * written/read to generate config cycles. The base address of this is
++ * controlled by CFG_BASE_ADDRESS. There are 8 16 bit registers called
++ * FUNC0_BDF_NUM to FUNC8_BDF_NUM. These split the bottom half of the 64K
++ * window into 8 regions at 4K boundaries. These control the bus, device and
++ * function number you are trying to talk to.
++ *
++ * The decision on whether to generate a type 0 or type 1 access is controlled
++ * by bits 15:12 of the address you write to.  If they are zero, then a type 0
++ * is generated, if anything else it will be a type 1. Thus the bottom 4K
++ * region controlled by FUNC0_BDF_NUM can only generate type 0, all the others
++ * can only generate type 1.
++ *
++ * We only use FUNC0_BDF_NUM and FUNC1_BDF_NUM. Which one you use is selected
++ * by bit 12 of the address you write to. The selected register is then used
++ * for the top 16 bits of the slv_haddr to form the bus/dev/func, bit 15:12 are
++ * wired to zero, and bits 11:2 form the address of the register you want to
++ * read in config space.
++ *
++ * We always write FUNC0_BDF_NUM as a 32 bit write. So if we want type 1
++ * accesses we have to shift by 16 so in effect we are writing to FUNC1_BDF_NUM
++ */
++static inline u32 bdf_num(int bus, int devfn, int is_root_bus)
++{
++	return ((bus << 8) | devfn) << (is_root_bus ? 0 : 16);
++}
++
++static void __iomem *st_pcie_other_map_bus(struct pci_bus *bus, unsigned int devfn, int where)
++{
++	struct pcie_port *pp = bus->sysdata;
++	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
++	u32 bdf;
++
++	bdf = bdf_num(bus->number, devfn, pci_is_root_bus(bus));
++
++	/* Set the config packet devfn */
++	dw_pcie_writel_dbi(dw, FUNC0_BDF_NUM, bdf);
++	dw_pcie_readl_dbi(dw, FUNC0_BDF_NUM);
++
++	return pp->va_cfg0_base + where + (pci_is_root_bus(bus->parent) ? 0 : CFG_SPACE1_OFFSET);
++}
++
++static struct pci_ops st_child_pcie_ops = {
++	.map_bus = st_pcie_other_map_bus,
++	.read = pci_generic_config_read,
++	.write = pci_generic_config_write,
++};
++
++static void st_pcie_hw_setup(struct dw_pcie *dw)
++{
++	struct st_pcie *pcie = to_st_pcie(dw);
++
++	/* Set up the config window to the top of the PCI address space */
++	dw_pcie_writel_dbi(dw, CFG_BASE_ADDRESS, pcie->config_window_start);
++
++	/*
++	 * Open up memory to the PCI controller. We could do slightly
++	 * better than this and exclude the kernel text segment and bss etc.
++	 * They are base/limit registers so can be of arbitrary alignment
++	 * presumably
++	 */
++	dw_pcie_writel_dbi(dw, IN0_MEM_ADDR_START, pcie->lmi->start);
++	dw_pcie_writel_dbi(dw, IN0_MEM_ADDR_LIMIT, pcie->lmi->end);
++
++	/* Disable the 2nd region */
++	dw_pcie_writel_dbi(dw, IN1_MEM_ADDR_START, ~0);
++	dw_pcie_writel_dbi(dw, IN1_MEM_ADDR_LIMIT, 0);
++
++	dw_pcie_writel_dbi(dw, TRANSLATION_CONTROL, RC_PASS_ADDR_RANGE);
++}
++
++static int st_pcie_init(struct pcie_port *pp)
++{
++	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
++	struct st_pcie *pcie = to_st_pcie(dw);
++	int ret;
++
++	/* Set device type : Root Complex */
++	ret = regmap_write(pcie->regmap, pcie->syscfg0, PCIE_TYPE_ROOT_COMPLEX);
++	if (ret < 0) {
++		dev_err(dw->dev, "unable to set device type\n");
++		return ret;
++	}
++
++	ret = reset_control_deassert(pcie->pwr);
++	if (ret) {
++		dev_err(dw->dev, "unable to bring out of powerdown\n");
++		return ret;
++	}
++
++	ret = reset_control_deassert(pcie->rst);
++	if (ret) {
++		dev_err(dw->dev, "unable to bring out of softreset\n");
++		return ret;
++	}
++
++	usleep_range(1000, 2000);
++
++	return ret;
++}
++
++static int st_pcie_control_ltssm(struct dw_pcie *dw, bool enable)
++{
++	struct st_pcie *pcie = to_st_pcie(dw);
++
++	return regmap_update_bits(pcie->regmap, pcie->syscfg1, PCIE_APP_LTSSM_ENABLE,
++				  FIELD_PREP(PCIE_APP_LTSSM_ENABLE, enable));
++}
++
++static int st_pcie_host_init(struct pcie_port *pp)
++{
++	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
++	struct st_pcie *pcie = to_st_pcie(dw);
++	int err;
++
++	pcie->config_window_start = pp->cfg0_base;
++
++	/*
++	 * "Override" default ops provided by designware driver as STI
++	 * PCIe uses its own translation unit rather than iATU
++	 */
++	pp->bridge->child_ops = &st_child_pcie_ops;
++
++	/*
++	 * We have to initialise the PCIe cell on some hardware before we can
++	 * talk to the phy
++	 */
++	err = st_pcie_init(pp);
++	if (err)
++		return err;
++
++	err = st_pcie_control_ltssm(dw, false);
++	if (err) {
++		dev_err(dw->dev, "disable ltssm failed, %d\n", err);
++		return err;
++	}
++
++	/* Init the associated miphy */
++	err = phy_init(pcie->phy);
++	if (err < 0) {
++		dev_err(dw->dev, "Cannot init PHY: %d\n", err);
++		return err;
++	}
++
++	return 0;
++}
++
++static int st_pcie_start_link(struct dw_pcie *dw)
++{
++	struct st_pcie *pcie = to_st_pcie(dw);
++	int err;
++
++	/* Do all the register poking */
++	st_pcie_hw_setup(dw);
++
++	if (pcie->reset_gpio) {
++		/* Engage PERST# signal */
++		gpiod_set_value(pcie->reset_gpio, 1);
++
++		/* PERST# signal must stay asserted for at least 100us (Tperst-clk) */
++		usleep_range(100, 200);
++
++		/* Release PERST# signal */
++		gpiod_set_value(pcie->reset_gpio, 0);
++	}
++
++	/* Re-enable the link, link training must begin shortly after reset */
++	err = st_pcie_control_ltssm(dw, true);
++	if (err) {
++		dev_err(dw->dev, "enable ltssm failed, %d\n", err);
++		return err;
++	}
++
++	err = dw_pcie_wait_for_link(dw);
++	if (err) {
++		dev_err(dw->dev, "wait for link failed, %d\n", err);
++		return err;
++	}
++
++	/*
++	 * PCIe specification states that you should not issue any config
++	 * requests until 100ms after asserting reset, so we enforce that here
++	 */
++	if  (pcie->reset_gpio)
++		msleep(100);
++
++	return 0;
++}
++
++static struct dw_pcie_host_ops st_pcie_host_ops = {
++	.host_init = st_pcie_host_init,
++};
++
++static const struct dw_pcie_ops dw_pcie_ops = {
++	.start_link = st_pcie_start_link,
++};
++
++static int __init st_pcie_probe(struct platform_device *pdev)
++{
++	struct st_pcie *pcie;
++	struct dw_pcie *dw;
++	struct device_node *np = pdev->dev.of_node;
++	struct pcie_port *pp;
++	int ret;
++
++	pcie = devm_kzalloc(&pdev->dev, sizeof(*pcie), GFP_KERNEL);
++	if (!pcie)
++		return -ENOMEM;
++
++	dw = devm_kzalloc(&pdev->dev, sizeof(*dw), GFP_KERNEL);
++	if (!dw)
++		return -ENOMEM;
++	pcie->dw = dw;
++	dw->dev = &pdev->dev;
++	dw->ops = &dw_pcie_ops;
++
++	pp = &dw->pp;
++	pp->ops = &st_pcie_host_ops;
++
++	/* mem regions */
++	pcie->lmi = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mem-window");
++	if (!pcie->lmi)
++		return -ENXIO;
++
++	/* regmap registers for PCIe IP configuration */
++	pcie->regmap = syscon_regmap_lookup_by_phandle(np, "st,syscfg");
++	if (IS_ERR(pcie->regmap))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->regmap),
++				     "No syscfg phandle specified\n");
++
++	ret = of_property_read_u32_index(np, "st,syscfg", SYSCFG0_REG, &pcie->syscfg0);
++	if (ret) {
++		dev_err(&pdev->dev, "can't get syscfg0 offset (%d)\n", ret);
++		return ret;
++	}
++
++	ret = of_property_read_u32_index(np, "st,syscfg", SYSCFG1_REG, &pcie->syscfg1);
++	if (ret) {
++		dev_err(&pdev->dev, "can't get syscfg1 offset (%d)\n", ret);
++		return ret;
++	}
++
++	/* powerdown / resets */
++	pcie->pwr = devm_reset_control_get_optional(&pdev->dev, "powerdown");
++	if (IS_ERR(pcie->pwr))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->pwr),
++				     "Error getting powerdown reset control\n");
++
++	pcie->rst = devm_reset_control_get(&pdev->dev, "softreset");
++	if (IS_ERR(pcie->rst))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->rst),
++				     "Error getting softreset control\n");
++
++	/* phy */
++	pcie->phy = devm_phy_get(&pdev->dev, "pcie");
++	if (IS_ERR(pcie->phy))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->phy), "no PHY configured\n");
++
++	/* Claim the GPIO for PRST# if available */
++	pcie->reset_gpio = devm_gpiod_get_optional(&pdev->dev, "reset", GPIOD_OUT_LOW);
++	if (IS_ERR(pcie->reset_gpio))
++		return dev_err_probe(&pdev->dev, PTR_ERR(pcie->reset_gpio),
++				     "Cannot request reset-gpios\n");
++
++	platform_set_drvdata(pdev, pcie);
++
++	ret = dw_pcie_host_init(pp);
++	if (ret)
++		return dev_err_probe(&pdev->dev, ret, "failed to initialize host\n");
++
++	return 0;
++}
++
++static const struct of_device_id st_pcie_of_match[] = {
++	{ .compatible = "st,stih407-pcie", },
++	{ },
++};
++
++static struct platform_driver st_pcie_driver __refdata = {
++	.probe  = st_pcie_probe,
++	.driver = {
++		.name = "st-pcie",
++		.of_match_table = st_pcie_of_match,
++	},
++};
++builtin_platform_driver(st_pcie_driver);
+-- 
+2.41.0
+
+From 638b3f90a9db88ed757b04b32870bd6c4e237743 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Mon, 5 Sep 2022 13:40:55 +0200
+Subject: [PATCH 03/55] pci: dwc: sti : Rename struct pcie_port to dw_pcie_rp
+
+All of the DW PCIe core driver entities except the pcie_port struct have
+names with the "dw_" prefix to distinguish local and common PCIe name
+spaces, and endpoint-related entities have an "_ep" suffix.
+
+based on 60b3c27fb9b92b8b55cd8bdcc444c3f7cb556652
+---
+ drivers/pci/controller/dwc/pcie-sti.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/pci/controller/dwc/pcie-sti.c b/drivers/pci/controller/dwc/pcie-sti.c
+index 2d8cc1bbbb44..a069ef110801 100644
+--- a/drivers/pci/controller/dwc/pcie-sti.c
++++ b/drivers/pci/controller/dwc/pcie-sti.c
+@@ -120,7 +120,7 @@ static inline u32 bdf_num(int bus, int devfn, int is_root_bus)
+ 
+ static void __iomem *st_pcie_other_map_bus(struct pci_bus *bus, unsigned int devfn, int where)
+ {
+-	struct pcie_port *pp = bus->sysdata;
++	struct dw_pcie_rp *pp = bus->sysdata;
+ 	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
+ 	u32 bdf;
+ 
+@@ -162,7 +162,7 @@ static void st_pcie_hw_setup(struct dw_pcie *dw)
+ 	dw_pcie_writel_dbi(dw, TRANSLATION_CONTROL, RC_PASS_ADDR_RANGE);
+ }
+ 
+-static int st_pcie_init(struct pcie_port *pp)
++static int st_pcie_init(struct dw_pcie_rp *pp)
+ {
+ 	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
+ 	struct st_pcie *pcie = to_st_pcie(dw);
+@@ -200,7 +200,7 @@ static int st_pcie_control_ltssm(struct dw_pcie *dw, bool enable)
+ 				  FIELD_PREP(PCIE_APP_LTSSM_ENABLE, enable));
+ }
+ 
+-static int st_pcie_host_init(struct pcie_port *pp)
++static int st_pcie_host_init(struct dw_pcie_rp *pp)
+ {
+ 	struct dw_pcie *dw = to_dw_pcie_from_pp(pp);
+ 	struct st_pcie *pcie = to_st_pcie(dw);
+@@ -293,7 +293,7 @@ static int __init st_pcie_probe(struct platform_device *pdev)
+ 	struct st_pcie *pcie;
+ 	struct dw_pcie *dw;
+ 	struct device_node *np = pdev->dev.of_node;
+-	struct pcie_port *pp;
++	struct dw_pcie_rp *pp;
+ 	int ret;
+ 
+ 	pcie = devm_kzalloc(&pdev->dev, sizeof(*pcie), GFP_KERNEL);
+-- 
+2.41.0
+
+From 9df79cbe8cc65ef80f581bc71b6c345ae1079bc9 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Mon, 26 Dec 2022 15:44:52 +0100
+Subject: [PATCH 04/55] pci: dwc: pcie-st: PCI_MSI_IRQ_DOMAIN -> PCI_MSI
+
+---
+ drivers/pci/controller/dwc/Kconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/pci/controller/dwc/Kconfig b/drivers/pci/controller/dwc/Kconfig
+index ceb2ade8403f..3b3c94f3b43d 100644
+--- a/drivers/pci/controller/dwc/Kconfig
++++ b/drivers/pci/controller/dwc/Kconfig
+@@ -418,7 +418,7 @@ config PCIE_VISCONTI_HOST
+ config PCIE_STI
+ 	bool "STMicroelectronics PCIe Controller for STi SoCs"
+ 	depends on ARCH_STI || COMPILE_TEST
+-	depends on OF && PCI_MSI_IRQ_DOMAIN
++	depends on OF && PCI_MSI
+ 	select PCIE_DW_HOST
+ 	help
+ 	  Enable PCIe controller support on STMicroelectronics STi SoCs.
+-- 
+2.41.0
+
+From d2a2664faf2d6276d770f266237f2bb0bb4c1433 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Sat, 19 Dec 2020 17:07:21 +0100
+Subject: [PATCH 05/55] MAINTAINERS: add entry for ST STI PCIE driver
+
+Add PCIE Driver entry for STI family from ST Microelectronics.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+
+v2: identical to v1
+---
+ MAINTAINERS | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 4cc6bf79fdd8..c16ce14c050b 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -16301,6 +16301,12 @@ L:	linux-samsung-soc@vger.kernel.org
+ S:	Maintained
+ F:	drivers/pci/controller/dwc/pci-exynos.c
+ 
++PCI DRIVER FOR ST STI PLATFORM
++M:	Alain Volmat <avolmat@me.com>
++L:	linux-pci@vger.kernel.org
++S:	Maintained
++F:	drivers/pci/controller/dwc/pcie-sti.c
++
+ PCI DRIVER FOR SYNOPSYS DESIGNWARE
+ M:	Jingoo Han <jingoohan1@gmail.com>
+ M:	Gustavo Pimentel <gustavo.pimentel@synopsys.com>
+-- 
+2.41.0
+
+From 1b983017cb5c1ad399bed4491e6ff4feb393e0d8 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Sat, 4 Dec 2021 22:38:28 +0100
+Subject: [PATCH 06/55] ARM: dts: sti: add the PCIe controller node within
+ stih407-family
+
+Add the pcie1 entry within stih407-family dtsi.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+
+v2: remove useless line break
+    change reset lines order
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 40 ++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index 3f58383a7b59..f658f882b77b 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -660,6 +660,46 @@ spifsm: spifsm@9022000 {
+ 			status = "disabled";
+ 		};
+ 
++		pcie1: pcie@9b10000 {
++			compatible = "st,stih407-pcie";
++			device_type = "pci";
++			reg = <0x09b10000 0x00001000>,	/* cntrl registers */
++			      <0x3fff0000 0x00010000>,	/* config space */
++			      <0x40000000 0xc0000000>;	/* lmi mem window */
++
++			reg-names = "dbi",
++				    "config",
++				    "mem-window";
++
++			st,syscfg = <&syscfg_core 0xdc 0xe4>;
++
++			#interrupt-cells = <1>;
++			interrupts = <GIC_SPI 175 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "msi";
++			interrupt-map-mask = <0 0 0 7>;
++			interrupt-map = <0 0 0 1 &intc GIC_SPI 171 IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 2 &intc GIC_SPI 172 IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 3 &intc GIC_SPI 173 IRQ_TYPE_LEVEL_HIGH>,
++					<0 0 0 4 &intc GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
++
++			#address-cells = <3>;
++			#size-cells = <2>;
++			/* non-prefetchable and prefetchable */
++			ranges = <0x82000000 0 0x30000000 0x30000000 0 0x05550000>,
++				 <0xc2000000 0 0x35550000 0x35550000 0 0x0AAA0000>;
++			bus-range = <0x00 0xff>;
++
++			resets = <&softreset STIH407_PCIE1_SOFTRESET>,
++				 <&powerdown STIH407_PCIE1_POWERDOWN>;
++
++			reset-names = "softreset", "powerdown";
++
++			phys = <&phy_port1 PHY_TYPE_PCIE>;
++			phy-names = "pcie";
++
++			status = "disabled";
++		};
++
+ 		sata0: sata@9b20000 {
+ 			compatible = "st,ahci";
+ 			reg = <0x9b20000 0x1000>;
+-- 
+2.41.0
+
+From 48d14fc99517df74d0c986dc1b63d53b11d04ffb Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Wed, 8 Dec 2021 18:39:26 +0100
+Subject: [PATCH 07/55] ARM: dts: sti: enable PCIe on the stih418-b2264 board
+
+Enable the PCIe controller with proper reset gpio pin for this board.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index fc32a03073b6..30fa63395ec6 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -130,6 +130,11 @@ &ohci1 {
+ 	status = "okay";
+ };
+ 
++&pcie1 {
++	reset-gpios = <&pio34 5 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
+ &pwm1 {
+ 	status = "okay";
+ };
+-- 
+2.41.0
+
+From 736c05d8ea0145a0dea7cf9c2ea111d372f3f541 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Wed, 1 Apr 2020 11:58:33 +0200
+Subject: [PATCH 08/55] mtd: st_spi_fsm: disable QuadSPI write mode
+
+NOT TO BE UPSTREAMED - temporary workaround in order to
+enable write on the SPINor.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/mtd/devices/st_spi_fsm.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mtd/devices/st_spi_fsm.c b/drivers/mtd/devices/st_spi_fsm.c
+index 3dbb1aa80bfa..4810e3d8a414 100644
+--- a/drivers/mtd/devices/st_spi_fsm.c
++++ b/drivers/mtd/devices/st_spi_fsm.c
+@@ -368,7 +368,9 @@ static struct flash_info flash_types[] = {
+ 	{ "n25q128", 0x20ba18, 0, 64 * 1024,  256, N25Q_FLAG, 108,
+ 	  stfsm_n25q_config },
+ 	{ "n25q256", 0x20ba19, 0, 64 * 1024,  512,
+-	  N25Q_FLAG | FLASH_FLAG_32BIT_ADDR, 108, stfsm_n25q_config },
++	  (N25Q_FLAG | FLASH_FLAG_32BIT_ADDR) &
++	  ~(FLASH_FLAG_WRITE_1_1_4 | FLASH_FLAG_WRITE_1_4_4),
++	  108, stfsm_n25q_config },
+ 
+ 	/*
+ 	 * Spansion S25FLxxxP
+-- 
+2.41.0
+
+From 32f69277145eb2c623cd0e3547c3aa606328bd4a Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Sun, 22 Mar 2020 13:06:36 +0100
+Subject: [PATCH 09/55] Revert "ARM: sti: remove pen_release and boot_lock"
+
+This reverts commit 704cfd7f5f71c6bc6cdfaa63a16ed0f72882b1a1.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/mach-sti/Makefile  |  2 +-
+ arch/arm/mach-sti/headsmp.S | 43 ++++++++++++++++++
+ arch/arm/mach-sti/platsmp.c | 88 +++++++++++++++++++++++++++++++------
+ 3 files changed, 118 insertions(+), 15 deletions(-)
+ create mode 100644 arch/arm/mach-sti/headsmp.S
+
+diff --git a/arch/arm/mach-sti/Makefile b/arch/arm/mach-sti/Makefile
+index 7e2a58257401..523b36bbaba6 100644
+--- a/arch/arm/mach-sti/Makefile
++++ b/arch/arm/mach-sti/Makefile
+@@ -1,3 +1,3 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+-obj-$(CONFIG_SMP)		+= platsmp.o
++obj-$(CONFIG_SMP)		+= platsmp.o headsmp.o
+ obj-$(CONFIG_ARCH_STI) 		+= board-dt.o
+diff --git a/arch/arm/mach-sti/headsmp.S b/arch/arm/mach-sti/headsmp.S
+new file mode 100644
+index 000000000000..e0ad451700d5
+--- /dev/null
++++ b/arch/arm/mach-sti/headsmp.S
+@@ -0,0 +1,43 @@
++/*
++ *  arch/arm/mach-sti/headsmp.S
++ *
++ * Copyright (C) 2013 STMicroelectronics (R&D) Limited.
++ *		http://www.st.com
++ *
++ * Cloned from linux/arch/arm/mach-vexpress/headsmp.S
++ *
++ *  Copyright (c) 2003 ARM Limited
++ *  All Rights Reserved
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ */
++#include <linux/linkage.h>
++#include <linux/init.h>
++
++/*
++ * ST specific entry point for secondary CPUs.  This provides
++ * a "holding pen" into which all secondary cores are held until we're
++ * ready for them to initialise.
++ */
++ENTRY(sti_secondary_startup)
++	mrc	p15, 0, r0, c0, c0, 5
++	and	r0, r0, #15
++	adr	r4, 1f
++	ldmia	r4, {r5, r6}
++	sub	r4, r4, r5
++	add	r6, r6, r4
++pen:	ldr	r7, [r6]
++	cmp	r7, r0
++	bne	pen
++
++	/*
++	 * we've been released from the holding pen: secondary_stack
++	 * should now contain the SVC stack for this core
++	 */
++	b	secondary_startup
++ENDPROC(sti_secondary_startup)
++
++1:	.long	.
++	.long	pen_release
+diff --git a/arch/arm/mach-sti/platsmp.c b/arch/arm/mach-sti/platsmp.c
+index e2ba04b562be..358d0ac708fc 100644
+--- a/arch/arm/mach-sti/platsmp.c
++++ b/arch/arm/mach-sti/platsmp.c
+@@ -25,33 +25,82 @@
+ 
+ #include "smp.h"
+ 
+-static u32 __iomem *cpu_strt_ptr;
++static void write_pen_release(int val)
++{
++	pen_release = val;
++	smp_wmb();
++	sync_cache_w(&pen_release);
++}
++
++static DEFINE_SPINLOCK(boot_lock);
++
++static void sti_secondary_init(unsigned int cpu)
++{
++	/*
++	 * let the primary processor know we're out of the
++	 * pen, then head off into the C entry point
++	 */
++	write_pen_release(-1);
++
++	/*
++	 * Synchronise with the boot thread.
++	 */
++	spin_lock(&boot_lock);
++	spin_unlock(&boot_lock);
++}
+ 
+ static int sti_boot_secondary(unsigned int cpu, struct task_struct *idle)
+ {
+-	unsigned long entry_pa = __pa_symbol(secondary_startup);
++	unsigned long timeout;
+ 
+ 	/*
+-	 * Secondary CPU is initialised and started by a U-BOOTROM firmware.
+-	 * Secondary CPU is spinning and waiting for a write at cpu_strt_ptr.
+-	 * Writing secondary_startup address at cpu_strt_ptr makes it to
+-	 * jump directly to secondary_startup().
++	 * set synchronisation state between this boot processor
++	 * and the secondary one
+ 	 */
+-	__raw_writel(entry_pa, cpu_strt_ptr);
++	spin_lock(&boot_lock);
+ 
+-	/* wmb so that data is actually written before cache flush is done */
+-	smp_wmb();
+-	sync_cache_w(cpu_strt_ptr);
++	/*
++	 * The secondary processor is waiting to be released from
++	 * the holding pen - release it, then wait for it to flag
++	 * that it has been released by resetting pen_release.
++	 *
++	 * Note that "pen_release" is the hardware CPU ID, whereas
++	 * "cpu" is Linux's internal ID.
++	 */
++	write_pen_release(cpu_logical_map(cpu));
+ 
+-	return 0;
++	/*
++	 * Send the secondary CPU a soft interrupt, thereby causing
++	 * it to jump to the secondary entrypoint.
++	 */
++	arch_send_wakeup_ipi_mask(cpumask_of(cpu));
++
++	timeout = jiffies + (1 * HZ);
++	while (time_before(jiffies, timeout)) {
++		smp_rmb();
++		if (pen_release == -1)
++			break;
++
++		udelay(10);
++	}
++
++	/*
++	 * now the secondary core is starting up let it run its
++	 * calibrations, then wait for it to finish
++	 */
++	spin_unlock(&boot_lock);
++
++	return pen_release != -1 ? -ENOSYS : 0;
+ }
+ 
+ static void __init sti_smp_prepare_cpus(unsigned int max_cpus)
+ {
+ 	struct device_node *np;
+ 	void __iomem *scu_base;
++	u32 __iomem *cpu_strt_ptr;
+ 	u32 release_phys;
+ 	int cpu;
++	unsigned long entry_pa = __pa_symbol(sti_secondary_startup);
+ 
+ 	np = of_find_compatible_node(NULL, NULL, "arm,cortex-a9-scu");
+ 
+@@ -79,8 +128,8 @@ static void __init sti_smp_prepare_cpus(unsigned int max_cpus)
+ 		}
+ 
+ 		/*
+-		 * cpu-release-addr is usually configured in SBC DMEM but can
+-		 * also be in RAM.
++		 * holding pen is usually configured in SBC DMEM but can also be
++		 * in RAM.
+ 		 */
+ 
+ 		if (!memblock_is_memory(release_phys))
+@@ -90,11 +139,22 @@ static void __init sti_smp_prepare_cpus(unsigned int max_cpus)
+ 			cpu_strt_ptr =
+ 				(u32 __iomem *)phys_to_virt(release_phys);
+ 
+-		set_cpu_possible(cpu, true);
++		__raw_writel(entry_pa, cpu_strt_ptr);
++
++		/*
++		 * wmb so that data is actually written
++		 * before cache flush is done
++		 */
++		smp_wmb();
++		sync_cache_w(cpu_strt_ptr);
++
++		if (!memblock_is_memory(release_phys))
++			iounmap(cpu_strt_ptr);
+ 	}
+ }
+ 
+ const struct smp_operations sti_smp_ops __initconst = {
+ 	.smp_prepare_cpus	= sti_smp_prepare_cpus,
++	.smp_secondary_init	= sti_secondary_init,
+ 	.smp_boot_secondary	= sti_boot_secondary,
+ };
+-- 
+2.41.0
+
+From d4215bfb1a325a1833f9fd46d347513a3580bd4e Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Sun, 22 Mar 2020 13:06:54 +0100
+Subject: [PATCH 10/55] arm: mach-sti: add back pen_release volatile
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/mach-sti/platsmp.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/arm/mach-sti/platsmp.c b/arch/arm/mach-sti/platsmp.c
+index 358d0ac708fc..fc50c66aed5c 100644
+--- a/arch/arm/mach-sti/platsmp.c
++++ b/arch/arm/mach-sti/platsmp.c
+@@ -25,6 +25,9 @@
+ 
+ #include "smp.h"
+ 
++/* XXX pen_release is cargo culted code - DO NOT COPY XXX */
++volatile int pen_release = -1;
++
+ static void write_pen_release(int val)
+ {
+ 	pen_release = val;
+-- 
+2.41.0
+
+From c24dc72ae61d5a47187b6162aa7018918eccc1f1 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Thu, 19 Mar 2020 11:25:22 +0100
+Subject: [PATCH 11/55] ARM: configs: Add b2264 defconfig
+
+Addition of a defconfig targetting the 4KOpen platform
+(aka stih418-b2264)
+---
+ arch/arm/configs/b2264_defconfig | 246 +++++++++++++++++++++++++++++++
+ 1 file changed, 246 insertions(+)
+ create mode 100644 arch/arm/configs/b2264_defconfig
+
+diff --git a/arch/arm/configs/b2264_defconfig b/arch/arm/configs/b2264_defconfig
+new file mode 100644
+index 000000000000..9e7e7e5a4042
+--- /dev/null
++++ b/arch/arm/configs/b2264_defconfig
+@@ -0,0 +1,246 @@
++CONFIG_NO_HZ=y
++CONFIG_HIGH_RES_TIMERS=y
++CONFIG_IKCONFIG=y
++CONFIG_IKCONFIG_PROC=y
++CONFIG_BLK_DEV_INITRD=y
++CONFIG_INITRAMFS_SOURCE="${BR_BINARIES_DIR}/rootfs.cpio"
++# CONFIG_RD_GZIP is not set
++# CONFIG_RD_BZIP2 is not set
++# CONFIG_RD_LZMA is not set
++# CONFIG_RD_LZO is not set
++# CONFIG_RD_LZ4 is not set
++CONFIG_KALLSYMS_ALL=y
++CONFIG_PERF_EVENTS=y
++CONFIG_ARCH_STI=y
++# CONFIG_SOC_STIH415 is not set
++# CONFIG_SOC_STIH416 is not set
++CONFIG_ARM_THUMBEE=y
++CONFIG_PL310_ERRATA_588369=y
++CONFIG_PL310_ERRATA_727915=y
++CONFIG_ARM_ERRATA_430973=y
++CONFIG_ARM_ERRATA_720789=y
++CONFIG_ARM_ERRATA_754327=y
++CONFIG_ARM_ERRATA_798181=y
++CONFIG_SMP=y
++CONFIG_HAVE_ARM_ARCH_TIMER=y
++CONFIG_HOTPLUG_CPU=y
++CONFIG_HIGHMEM=y
++CONFIG_CPU_FREQ=y
++CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y
++CONFIG_CPU_FREQ_GOV_USERSPACE=y
++CONFIG_CPUFREQ_DT=y
++CONFIG_ARM_STI_CPUFREQ=y
++CONFIG_VFP=y
++CONFIG_NEON=y
++CONFIG_KERNEL_MODE_NEON=y
++# CONFIG_SUSPEND is not set
++CONFIG_PM=y
++CONFIG_MODULES=y
++CONFIG_MODULE_UNLOAD=y
++CONFIG_MQ_IOSCHED_DEADLINE=m
++CONFIG_MQ_IOSCHED_KYBER=m
++CONFIG_IOSCHED_BFQ=m
++CONFIG_NET=y
++CONFIG_PACKET=m
++CONFIG_UNIX=m
++CONFIG_INET=y
++CONFIG_IP_MULTICAST=y
++CONFIG_INET_DIAG=m
++CONFIG_IPV6=m
++CONFIG_CFG80211=m
++CONFIG_CFG80211_WEXT=y
++CONFIG_MAC80211=m
++CONFIG_RFKILL=m
++CONFIG_PCI=y
++CONFIG_PCI_MSI=y
++CONFIG_PCI_HOST_GENERIC=y
++CONFIG_PCIE_ST=y
++CONFIG_DEVTMPFS=y
++CONFIG_DEVTMPFS_MOUNT=y
++CONFIG_MTD=m
++CONFIG_MTD_BLOCK=m
++CONFIG_MTD_ST_SPI_FSM=m
++CONFIG_BLK_DEV_LOOP=m
++CONFIG_SCSI=y
++CONFIG_BLK_DEV_SD=m
++CONFIG_ATA=m
++CONFIG_SATA_AHCI=m
++CONFIG_SATA_AHCI_PLATFORM=m
++CONFIG_AHCI_ST=m
++# CONFIG_ATA_SFF is not set
++CONFIG_NETDEVICES=y
++CONFIG_NETCONSOLE=m
++# CONFIG_NET_VENDOR_3COM is not set
++# CONFIG_NET_VENDOR_ADAPTEC is not set
++# CONFIG_NET_VENDOR_AGERE is not set
++# CONFIG_NET_VENDOR_ALACRITECH is not set
++# CONFIG_NET_VENDOR_ALTEON is not set
++# CONFIG_NET_VENDOR_AMAZON is not set
++# CONFIG_NET_VENDOR_AMD is not set
++# CONFIG_NET_VENDOR_AQUANTIA is not set
++# CONFIG_NET_VENDOR_ARC is not set
++# CONFIG_NET_VENDOR_ATHEROS is not set
++# CONFIG_NET_VENDOR_BROADCOM is not set
++# CONFIG_NET_VENDOR_BROCADE is not set
++# CONFIG_NET_VENDOR_CAVIUM is not set
++# CONFIG_NET_VENDOR_CHELSIO is not set
++# CONFIG_NET_VENDOR_CIRRUS is not set
++# CONFIG_NET_VENDOR_CISCO is not set
++# CONFIG_NET_VENDOR_DEC is not set
++# CONFIG_NET_VENDOR_DLINK is not set
++# CONFIG_NET_VENDOR_EMULEX is not set
++# CONFIG_NET_VENDOR_EZCHIP is not set
++# CONFIG_NET_VENDOR_FARADAY is not set
++# CONFIG_NET_VENDOR_HISILICON is not set
++# CONFIG_NET_VENDOR_HUAWEI is not set
++# CONFIG_NET_VENDOR_INTEL is not set
++# CONFIG_NET_VENDOR_MARVELL is not set
++# CONFIG_NET_VENDOR_MELLANOX is not set
++# CONFIG_NET_VENDOR_MICREL is not set
++# CONFIG_NET_VENDOR_MYRI is not set
++# CONFIG_NET_VENDOR_NATSEMI is not set
++# CONFIG_NET_VENDOR_NETRONOME is not set
++# CONFIG_NET_VENDOR_NVIDIA is not set
++# CONFIG_NET_VENDOR_OKI is not set
++# CONFIG_NET_VENDOR_QLOGIC is not set
++# CONFIG_NET_VENDOR_QUALCOMM is not set
++# CONFIG_NET_VENDOR_RDC is not set
++# CONFIG_NET_VENDOR_REALTEK is not set
++# CONFIG_NET_VENDOR_RENESAS is not set
++# CONFIG_NET_VENDOR_ROCKER is not set
++# CONFIG_NET_VENDOR_SAMSUNG is not set
++# CONFIG_NET_VENDOR_SEEQ is not set
++# CONFIG_NET_VENDOR_SOLARFLARE is not set
++# CONFIG_NET_VENDOR_SILAN is not set
++# CONFIG_NET_VENDOR_SIS is not set
++# CONFIG_NET_VENDOR_SMSC is not set
++CONFIG_STMMAC_ETH=y
++# CONFIG_NET_VENDOR_SUN is not set
++# CONFIG_NET_VENDOR_SYNOPSYS is not set
++# CONFIG_NET_VENDOR_TEHUTI is not set
++# CONFIG_NET_VENDOR_TI is not set
++# CONFIG_NET_VENDOR_VIA is not set
++# CONFIG_NET_VENDOR_WIZNET is not set
++CONFIG_HOSTAP=m
++CONFIG_RTL8192CE=m
++CONFIG_INPUT_LEDS=m
++CONFIG_INPUT_MATRIXKMAP=y
++# CONFIG_KEYBOARD_ATKBD is not set
++CONFIG_KEYBOARD_ST_KEYSCAN=m
++# CONFIG_INPUT_MOUSE is not set
++# CONFIG_SERIO is not set
++CONFIG_SERIAL_ST_ASC=y
++CONFIG_SERIAL_ST_ASC_CONSOLE=y
++CONFIG_HW_RANDOM_ST=m
++CONFIG_I2C_CHARDEV=m
++CONFIG_I2C_ST=m
++CONFIG_SPI=y
++CONFIG_SPI_GPIO=m
++CONFIG_SPI_ST_SSC4=m
++CONFIG_SPI_SPIDEV=m
++CONFIG_GPIO_SYSFS=y
++CONFIG_GPIO_SYSCON=y
++# CONFIG_HWMON is not set
++CONFIG_THERMAL=y
++CONFIG_ST_THERMAL_MEMMAP=m
++CONFIG_REGULATOR=y
++CONFIG_REGULATOR_PWM=m
++CONFIG_MEDIA_SUPPORT=m
++CONFIG_MEDIA_CAMERA_SUPPORT=y
++CONFIG_MEDIA_USB_SUPPORT=y
++CONFIG_USB_VIDEO_CLASS=m
++CONFIG_USB=m
++# CONFIG_USB_PCI is not set
++CONFIG_USB_XHCI_HCD=m
++CONFIG_USB_EHCI_HCD=m
++CONFIG_USB_EHCI_ROOT_HUB_TT=y
++CONFIG_USB_EHCI_HCD_STI=m
++CONFIG_USB_OHCI_HCD=m
++CONFIG_USB_OHCI_HCD_STI=m
++CONFIG_USB_STORAGE=m
++CONFIG_USB_UAS=m
++CONFIG_USB_DWC3=m
++CONFIG_USB_LINK_LAYER_TEST=m
++CONFIG_NOP_USB_XCEIV=m
++CONFIG_USB_GADGET=m
++CONFIG_USB_CONFIGFS=m
++CONFIG_USB_CONFIGFS_SERIAL=y
++CONFIG_USB_CONFIGFS_ACM=y
++CONFIG_USB_CONFIGFS_OBEX=y
++CONFIG_USB_CONFIGFS_NCM=y
++CONFIG_USB_CONFIGFS_ECM=y
++CONFIG_USB_CONFIGFS_ECM_SUBSET=y
++CONFIG_USB_CONFIGFS_RNDIS=y
++CONFIG_USB_CONFIGFS_EEM=y
++CONFIG_USB_CONFIGFS_MASS_STORAGE=y
++CONFIG_USB_CONFIGFS_F_LB_SS=y
++CONFIG_USB_CONFIGFS_F_FS=y
++CONFIG_USB_CONFIGFS_F_HID=y
++CONFIG_USB_CONFIGFS_F_PRINTER=y
++CONFIG_USB_MASS_STORAGE=m
++CONFIG_USB_CDC_COMPOSITE=m
++CONFIG_USB_G_ACM_MS=m
++CONFIG_MMC=m
++CONFIG_MMC_SDHCI=m
++CONFIG_MMC_SDHCI_PLTFM=m
++CONFIG_MMC_SDHCI_ST=m
++CONFIG_NEW_LEDS=y
++CONFIG_LEDS_CLASS=y
++CONFIG_LEDS_GPIO=y
++CONFIG_LEDS_TRIGGERS=y
++CONFIG_LEDS_TRIGGER_HEARTBEAT=y
++CONFIG_STAGING=y
++CONFIG_MAILBOX=y
++CONFIG_STI_MBOX=m
++# CONFIG_IOMMU_SUPPORT is not set
++CONFIG_MEMORY=y
++CONFIG_PWM=y
++CONFIG_PWM_STI=m
++CONFIG_PHY_MIPHY28LP=y
++CONFIG_PHY_STIH407_USB=m
++CONFIG_EXT4_FS=m
++CONFIG_EXT4_FS_POSIX_ACL=y
++CONFIG_EXT4_FS_SECURITY=y
++CONFIG_XFS_FS=m
++CONFIG_FUSE_FS=m
++CONFIG_CUSE=m
++CONFIG_ISO9660_FS=m
++CONFIG_JOLIET=y
++CONFIG_ZISOFS=y
++CONFIG_UDF_FS=m
++CONFIG_MSDOS_FS=m
++CONFIG_VFAT_FS=m
++CONFIG_FAT_DEFAULT_UTF8=y
++CONFIG_EXFAT_FS=y
++CONFIG_TMPFS=y
++CONFIG_TMPFS_POSIX_ACL=y
++CONFIG_CONFIGFS_FS=y
++# CONFIG_MISC_FILESYSTEMS is not set
++CONFIG_CIFS=m
++CONFIG_CIFS_XATTR=y
++CONFIG_CIFS_POSIX=y
++CONFIG_NLS_CODEPAGE_437=m
++CONFIG_NLS_CODEPAGE_850=m
++CONFIG_NLS_ASCII=m
++CONFIG_NLS_ISO8859_1=m
++CONFIG_NLS_ISO8859_15=m
++CONFIG_NLS_UTF8=y
++CONFIG_CRYPTO_AUTHENC=m
++CONFIG_CRC_ITU_T=y
++CONFIG_PRINTK_TIME=y
++CONFIG_DEBUG_INFO=y
++CONFIG_DEBUG_INFO_REDUCED=y
++CONFIG_KGDB=y
++CONFIG_KGDB_TESTS=y
++CONFIG_KGDB_KDB=y
++CONFIG_DEBUG_KERNEL=y
++CONFIG_FUNCTION_TRACER=y
++CONFIG_FUNCTION_PROFILER=y
++CONFIG_IRQSOFF_TRACER=y
++CONFIG_SCHED_TRACER=y
++CONFIG_HWLAT_TRACER=y
++CONFIG_FTRACE_SYSCALLS=y
++CONFIG_BLK_DEV_IO_TRACE=y
++CONFIG_DEBUG_LL=y
++CONFIG_DEBUG_STIH418_SBC_ASC0=y
++CONFIG_EARLY_PRINTK=y
+-- 
+2.41.0
+
+From aca1fdd50db1097da468fb5ac2e756cf4aabfa5c Mon Sep 17 00:00:00 2001
+From: Sudeep Holla <sudeep.holla@arm.com>
+Date: Mon, 23 Feb 2015 18:28:10 +0000
+Subject: [PATCH 16/55] ARM: kernel: add support for cpu cache information
+
+This patch adds support for cacheinfo on ARM platforms.
+
+On ARMv7, the cache hierarchy can be identified through Cache Level ID
+register(CLIDR) while the cache geometry is provided by Cache Size ID
+register(CCSIDR).
+
+On architecture versions before ARMv7, CLIDR and CCSIDR is not
+implemented. The cache type register(CTR) provides both cache hierarchy
+and geometry if implemented. For implementations that doesn't support
+CTR, we need to list the probable value of CTR if it was implemented
+along with the cpuid for the sake of simplicity to handle them.
+
+Since the architecture doesn't provide any way of detecting the cpus
+sharing particular cache, device tree is used fo the same purpose.
+On non-DT platforms, first level caches are per-cpu while higher level
+caches are assumed system-wide.
+
+This is based on the newly introduced generic cacheinfo infrastructure
+through the commit 246246cbde5e ("drivers: base: support cpu cache
+information interface to userspace via sysfs")
+
+Signed-off-by: Sudeep Holla <sudeep.holla@arm.com>
+Tested-by: Stephen Boyd <sboyd@codeaurora.org>
+Cc: Russell King <linux@arm.linux.org.uk>
+Cc: Will Deacon <will.deacon@arm.com>
+Cc: linux-arm-kernel@lists.infradead.org
+---
+ arch/arm/kernel/Makefile    |   1 +
+ arch/arm/kernel/cacheinfo.c | 282 ++++++++++++++++++++++++++++++++++++
+ arch/arm/mm/Kconfig         |  13 ++
+ 3 files changed, 296 insertions(+)
+ create mode 100644 arch/arm/kernel/cacheinfo.c
+
+diff --git a/arch/arm/kernel/Makefile b/arch/arm/kernel/Makefile
+index d53f56d6f840..4d86cda38ac0 100644
+--- a/arch/arm/kernel/Makefile
++++ b/arch/arm/kernel/Makefile
+@@ -38,6 +38,7 @@ obj-y		+= entry-v7m.o v7m.o
+ else
+ obj-y		+= entry-armv.o
+ endif
++obj-$(CONFIG_CPU_HAS_CACHE) += cacheinfo.o
+ 
+ obj-$(CONFIG_MMU)		+= bugs.o
+ obj-$(CONFIG_CPU_IDLE)		+= cpuidle.o
+diff --git a/arch/arm/kernel/cacheinfo.c b/arch/arm/kernel/cacheinfo.c
+new file mode 100644
+index 000000000000..0c4a67dcbcaf
+--- /dev/null
++++ b/arch/arm/kernel/cacheinfo.c
+@@ -0,0 +1,282 @@
++/*
++ *  ARM cacheinfo support
++ *
++ *  Copyright (C) 2015 ARM Ltd.
++ *  All Rights Reserved
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include <linux/bitops.h>
++#include <linux/cacheinfo.h>
++#include <linux/cpu.h>
++#include <linux/compiler.h>
++#include <linux/of.h>
++
++#include <asm/cputype.h>
++#include <asm/processor.h>
++#include <asm/system_info.h>
++
++#define cache_is_armv7() \
++	(cpu_architecture() >= CPU_ARCH_ARMv7 && !armv6_extended())
++#define MAX_CACHE_LEVEL		(cache_is_armv7() ? 7 : 1)
++
++#define CTR_CTYPE_SHIFT		24
++#define CTR_CTYPE_MASK		(1 << CTR_CTYPE_SHIFT)
++
++struct ctr_info {
++	unsigned int cpuid_part;
++	unsigned int ctr;
++};
++
++/*
++ *  Cache Type Register
++ *  +---------------------------------+
++ *  | 31 29 | 28 25 |24| 23 12 | 11 0 |
++ *  +---------------------------------+
++ *  | 0 0 0 | Ctype | S| Dsize | Isize|
++ *  +---------------------------------+
++ * The table below encodes only Dsize and Isize
++ */
++static struct ctr_info cache_ctr_list[] = {
++	{0x4400a100, 0x0016A16A }, /* SA-110:  32kB D$, 32kB I$ */
++	{0x4400a110, 0x0012A16A }, /* SA-1100: 16kB D$, 32kB I$ */
++	{0x6900b110, 0x0012A16A }, /* SA-1110: 16kB D$, 32kB I$ */
++};
++
++/*
++ * List of CPUs reported as ARMv7 but don't implement CLIDR,
++ * CSSELR and CCSIDR. Cache information is still available from CTR
++ */
++static int armv6_ext_cpuid_part[] = {
++	0x4100b020, /* ARM11MP */
++	0x4100b760, /* ARM1176 */
++};
++
++static bool armv6_extended(void)
++{
++	int i, cpuid_part = read_cpuid_part();
++
++	for (i = 0; i < ARRAY_SIZE(armv6_ext_cpuid_part); i++)
++		if (armv6_ext_cpuid_part[i] == cpuid_part)
++			return true;
++	return false;
++}
++
++static int get_unimplemented_ctr(unsigned int *ctr)
++{
++	int i, cpuid_part = read_cpuid_part();
++
++	for (i = 0; i < ARRAY_SIZE(cache_ctr_list); i++)
++		if (cache_ctr_list[i].cpuid_part == cpuid_part) {
++			*ctr = cache_ctr_list[i].ctr;
++			return 0;
++		}
++	return -ENOENT;
++}
++
++static unsigned int get_ctr(void)
++{
++	unsigned int ctr;
++
++	if (get_unimplemented_ctr(&ctr))
++		ctr = read_cpuid_cachetype();
++	return ctr;
++}
++
++static enum cache_type __get_cache_type(int level)
++{
++	if (level > MAX_CACHE_LEVEL)
++		return CACHE_TYPE_NOCACHE;
++	return get_ctr() & CTR_CTYPE_MASK ?
++		CACHE_TYPE_SEPARATE : CACHE_TYPE_UNIFIED;
++}
++
++/*
++ *  +---------------------------------+
++ *  | 9  8  7  6 | 5  4  3 | 2 | 1  0 |
++ *  +---------------------------------+
++ *  |    size    |  assoc  | m |  len |
++ *  +---------------------------------+
++ * linelen        = 1 << (len + 3)
++ * multiplier     = 2 + m
++ * nsets          = 1 << (size + 6 - assoc - len)
++ * associativity  = multiplier << (assoc - 1)
++ * cache_size     = multiplier << (size + 8)
++ */
++#define CTR_LINESIZE_MASK	0x3
++#define CTR_MULTIPLIER_SHIFT	2
++#define CTR_MULTIPLIER_MASK	0x1
++#define CTR_ASSOCIAT_SHIFT	3
++#define CTR_ASSOCIAT_MASK	0x7
++#define CTR_SIZE_SHIFT		6
++#define CTR_SIZE_MASK		0xF
++#define CTR_DCACHE_SHIFT	12
++
++static void __ci_leaf_init(enum cache_type type, struct cacheinfo *this_leaf)
++{
++	unsigned int size, multiplier, assoc, len, tmp = get_ctr();
++
++	if (type == CACHE_TYPE_DATA)
++		tmp >>= CTR_DCACHE_SHIFT;
++
++	len = tmp & CTR_LINESIZE_MASK;
++	size = (tmp >> CTR_SIZE_SHIFT) & CTR_SIZE_MASK;
++	assoc = (tmp >> CTR_ASSOCIAT_SHIFT) & CTR_ASSOCIAT_MASK;
++	multiplier = ((tmp >> CTR_MULTIPLIER_SHIFT) & CTR_MULTIPLIER_MASK) + 2;
++
++	this_leaf->type = type;
++	this_leaf->coherency_line_size = 1 << (len + 3);
++	this_leaf->number_of_sets = 1 << (size + 6 - assoc - len);
++	this_leaf->ways_of_associativity = multiplier << (assoc - 1);
++	this_leaf->size = multiplier << (size + 8);
++}
++
++/* Ctypen, bits[3(n - 1) + 2 : 3(n - 1)], for n = 1 to 7 */
++#define CLIDR_CTYPE_SHIFT(level)	(3 * (level - 1))
++#define CLIDR_CTYPE_MASK(level)		(7 << CLIDR_CTYPE_SHIFT(level))
++#define CLIDR_CTYPE(clidr, level)	\
++	(((clidr) & CLIDR_CTYPE_MASK(level)) >> CLIDR_CTYPE_SHIFT(level))
++
++static inline enum cache_type __armv7_get_cache_type(int level)
++{
++	unsigned int clidr;
++
++	if (level > MAX_CACHE_LEVEL)
++		return CACHE_TYPE_NOCACHE;
++	asm volatile ("mrc p15, 1, %0, c0, c0, 1" : "=r" (clidr));
++	return CLIDR_CTYPE(clidr, level);
++}
++
++/*
++ * NumSets, bits[27:13] - (Number of sets in cache) - 1
++ * Associativity, bits[12:3] - (Associativity of cache) - 1
++ * LineSize, bits[2:0] - (Log2(Number of words in cache line)) - 2
++ */
++#define CCSIDR_WRITE_THROUGH		BIT(31)
++#define CCSIDR_WRITE_BACK		BIT(30)
++#define CCSIDR_READ_ALLOCATE		BIT(29)
++#define CCSIDR_WRITE_ALLOCATE		BIT(28)
++#define CCSIDR_LINESIZE_MASK		0x7
++#define CCSIDR_LINESIZE(x)		((x) & CCSIDR_LINESIZE_MASK)
++#define CCSIDR_ASSOCIATIVITY_SHIFT	3
++#define CCSIDR_ASSOCIATIVITY_MASK	0x3ff
++#define CCSIDR_ASSOCIATIVITY(x)	\
++	(((x) >> CCSIDR_ASSOCIATIVITY_SHIFT) & CCSIDR_ASSOCIATIVITY_MASK)
++#define CCSIDR_NUMSETS_SHIFT		13
++#define CCSIDR_NUMSETS_MASK		0x7fff
++#define CCSIDR_NUMSETS(x) \
++	(((x) >> CCSIDR_NUMSETS_SHIFT) & CCSIDR_NUMSETS_MASK)
++
++#define CACHE_LINESIZE(x)		(16 << CCSIDR_LINESIZE(x))
++#define CACHE_NUMSETS(x)		(CCSIDR_NUMSETS(x) + 1)
++#define CACHE_ASSOCIATIVITY(x)		(CCSIDR_ASSOCIATIVITY(x) + 1)
++
++/*
++ * Cache Size Selection Register(CSSELR) selects which Cache Size ID
++ * Register(CCSIDR) is accessible by specifying the required cache
++ * level and the cache type. We need to ensure that no one else changes
++ * CSSELR by calling this in non-preemtible context
++ */
++static u32 __attribute_const__ cache_get_ccsidr(u32 csselr)
++{
++	u32 ccsidr;
++
++	/* Put value into CSSELR */
++	asm volatile ("mcr p15, 2, %0, c0, c0, 0" : : "r" (csselr));
++	isb();
++	/* Read result out of CCSIDR */
++	asm volatile ("mrc p15, 1, %0, c0, c0, 0" : "=r" (ccsidr));
++
++	return ccsidr;
++}
++
++static void __armv7_ci_leaf_init(enum cache_type type,
++				 struct cacheinfo *this_leaf)
++{
++	bool is_icache = type & CACHE_TYPE_INST;
++	u32 tmp = cache_get_ccsidr((this_leaf->level - 1) << 1 | is_icache);
++
++	this_leaf->type = type;
++	this_leaf->coherency_line_size = CACHE_LINESIZE(tmp);
++	this_leaf->number_of_sets = CACHE_NUMSETS(tmp);
++	this_leaf->ways_of_associativity = CACHE_ASSOCIATIVITY(tmp);
++	this_leaf->size = this_leaf->number_of_sets *
++	    this_leaf->coherency_line_size * this_leaf->ways_of_associativity;
++	this_leaf->attributes =
++		((tmp & CCSIDR_WRITE_THROUGH) ? CACHE_WRITE_THROUGH : 0) |
++		((tmp & CCSIDR_WRITE_BACK) ? CACHE_WRITE_BACK : 0) |
++		((tmp & CCSIDR_READ_ALLOCATE) ? CACHE_READ_ALLOCATE : 0) |
++		((tmp & CCSIDR_WRITE_ALLOCATE) ? CACHE_WRITE_ALLOCATE : 0);
++}
++
++static inline enum cache_type get_cache_type(int level)
++{
++	if (cache_is_armv7())
++		return __armv7_get_cache_type(level);
++	return __get_cache_type(level);
++}
++
++static void ci_leaf_init(struct cacheinfo *this_leaf,
++			 enum cache_type type, unsigned int level)
++{
++	this_leaf->level = level;
++	if (cache_is_armv7())
++		__armv7_ci_leaf_init(type, this_leaf);
++	else
++		__ci_leaf_init(type, this_leaf);
++}
++
++static int __init_cache_level(unsigned int cpu)
++{
++	unsigned int ctype, level, leaves;
++	struct cpu_cacheinfo *this_cpu_ci = get_cpu_cacheinfo(cpu);
++
++	for (level = 1, leaves = 0; level <= MAX_CACHE_LEVEL; level++) {
++		ctype = get_cache_type(level);
++		if (ctype == CACHE_TYPE_NOCACHE) {
++			level--;
++			break;
++		}
++		/* Separate instruction and data caches */
++		leaves += (ctype == CACHE_TYPE_SEPARATE) ? 2 : 1;
++	}
++
++	this_cpu_ci->num_levels = level;
++	this_cpu_ci->num_leaves = leaves;
++
++	return 0;
++}
++
++static int __populate_cache_leaves(unsigned int cpu)
++{
++	unsigned int level, idx;
++	enum cache_type type;
++	struct cpu_cacheinfo *this_cpu_ci = get_cpu_cacheinfo(cpu);
++	struct cacheinfo *this_leaf = this_cpu_ci->info_list;
++
++	for (idx = 0, level = 1; level <= this_cpu_ci->num_levels &&
++	     idx < this_cpu_ci->num_leaves; idx++, level++) {
++		type = get_cache_type(level);
++		if (type == CACHE_TYPE_SEPARATE) {
++			ci_leaf_init(this_leaf++, CACHE_TYPE_DATA, level);
++			ci_leaf_init(this_leaf++, CACHE_TYPE_INST, level);
++		} else {
++			ci_leaf_init(this_leaf++, type, level);
++		}
++	}
++	return 0;
++}
++
++DEFINE_SMP_CALL_CACHE_FUNCTION(init_cache_level)
++DEFINE_SMP_CALL_CACHE_FUNCTION(populate_cache_leaves)
+diff --git a/arch/arm/mm/Kconfig b/arch/arm/mm/Kconfig
+index c164cde50243..f54a04cec5ff 100644
+--- a/arch/arm/mm/Kconfig
++++ b/arch/arm/mm/Kconfig
+@@ -522,30 +522,42 @@ config CPU_PABRT_V7
+ # The cache model
+ config CPU_CACHE_V4
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_V4WT
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_V4WB
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_V6
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_V7
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_NOP
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_VIVT
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_VIPT
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config CPU_CACHE_FA
+ 	bool
++	select CPU_HAS_CACHE
++
++config CPU_HAS_CACHE
++	bool
+ 
+ config CPU_CACHE_V7M
+ 	bool
+@@ -958,6 +970,7 @@ config DMA_CACHE_RWFO
+ 
+ config OUTER_CACHE
+ 	bool
++	select CPU_HAS_CACHE
+ 
+ config OUTER_CACHE_SYNC
+ 	bool
+-- 
+2.41.0
+
+From 9229443c8a451d59b88c562e98118d13ce409ac5 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 20 Sep 2021 14:41:15 +0200
+Subject: [PATCH 17/55] ARM: kernel: cacheinfo: Get rid of
+ DEFINE_SMP_CALL_CACHE_FUNCTION()
+
+Needed after 4b92d4add5f6:
+drivers: base: cacheinfo: Get rid of DEFINE_SMP_CALL_CACHE_FUNCTION()
+
+DEFINE_SMP_CALL_CACHE_FUNCTION() was usefel before the CPU hotplug rework
+to ensure that the cache related functions are called on the upcoming CPU
+because the notifier itself could run on any online CPU.
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/kernel/cacheinfo.c | 7 ++-----
+ 1 file changed, 2 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/kernel/cacheinfo.c b/arch/arm/kernel/cacheinfo.c
+index 0c4a67dcbcaf..c5ccf114bcb5 100644
+--- a/arch/arm/kernel/cacheinfo.c
++++ b/arch/arm/kernel/cacheinfo.c
+@@ -237,7 +237,7 @@ static void ci_leaf_init(struct cacheinfo *this_leaf,
+ 		__ci_leaf_init(type, this_leaf);
+ }
+ 
+-static int __init_cache_level(unsigned int cpu)
++int init_cache_level(unsigned int cpu)
+ {
+ 	unsigned int ctype, level, leaves;
+ 	struct cpu_cacheinfo *this_cpu_ci = get_cpu_cacheinfo(cpu);
+@@ -258,7 +258,7 @@ static int __init_cache_level(unsigned int cpu)
+ 	return 0;
+ }
+ 
+-static int __populate_cache_leaves(unsigned int cpu)
++int populate_cache_leaves(unsigned int cpu)
+ {
+ 	unsigned int level, idx;
+ 	enum cache_type type;
+@@ -277,6 +277,3 @@ static int __populate_cache_leaves(unsigned int cpu)
+ 	}
+ 	return 0;
+ }
+-
+-DEFINE_SMP_CALL_CACHE_FUNCTION(init_cache_level)
+-DEFINE_SMP_CALL_CACHE_FUNCTION(populate_cache_leaves)
+-- 
+2.41.0
+
+From ef59d987117a326c6320e9b118f72e048c8211b3 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Thu, 7 Jan 2021 22:08:50 +0100
+Subject: [PATCH 18/55] cpufreq: st: fix "Add missing MODULE_DEVICE_TABLE" for
+ stih418
+
+---
+ drivers/cpufreq/sti-cpufreq.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/cpufreq/sti-cpufreq.c b/drivers/cpufreq/sti-cpufreq.c
+index 1a63aeea8711..ebb7472ccfe0 100644
+--- a/drivers/cpufreq/sti-cpufreq.c
++++ b/drivers/cpufreq/sti-cpufreq.c
+@@ -293,6 +293,7 @@ module_init(sti_cpufreq_init);
+ static const struct of_device_id __maybe_unused sti_cpufreq_of_match[] = {
+ 	{ .compatible = "st,stih407" },
+ 	{ .compatible = "st,stih410" },
++	{ .compatible = "st,stih418" },
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(of, sti_cpufreq_of_match);
+-- 
+2.41.0
+
+From 14f43c38c251d61b9587ecd693970533a7d76e60 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Wed, 3 Mar 2021 18:26:12 +0100
+Subject: [PATCH 19/55] dts: arm: stih418-b2264: port1 (USB3 ?) of miphy28
+
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 30fa63395ec6..c36cef66bb83 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -120,6 +120,9 @@ phy_port0: port@9b22000 {
+ 		st,sata-gen = <2>; /* SATA GEN3 */
+ 		st,osc-rdy;
+ 	};
++	phy_port1: port@9b2a000 {
++		st,osc-force-ext;
++	};
+ };
+ 
+ &mmc0 {
+-- 
+2.41.0
+
+From 842512b1aa36f3eaa70ec34a4718f5e61dc98a5f Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Wed, 3 Mar 2021 18:31:25 +0100
+Subject: [PATCH 20/55] dts: arm: stih418-b2264: partitions for SPINOR
+
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 27 ++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index c36cef66bb83..9e5a64666170 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -152,6 +152,33 @@ &sbc_serial0 {
+ 
+ &spifsm {
+ 	status = "okay";
++	partitions {
++		compatible = "fixed-partitions";
++		#address-cells = <1>;
++		#size-cells = <1>;
++
++		partition@0 {
++			label = "PBL"; /* 768Ko */
++			reg = < 0x0 0xc0000 >;
++			read-only;
++		};
++
++		partition@1 {
++			label = "u-boot-env"; /* 64Ko */
++			reg = < 0xc0000 0x10000 >;
++		};
++
++		partition@2 {
++			label = "mac-address-eth0"; /* 192Ko */
++			reg = < 0xd0000 0x30000 >;
++			read-only;
++		};
++
++		partition@3 {
++			label = "FIT"; /* 31 Mo */
++			reg = < 0x100000 0x1F00000 >;
++		};
++	};
+ };
+ 
+ &st_dwc3 {
+-- 
+2.41.0
+
+From 216bab37b80b13bea04e1fdc11a530e8d65e5040 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Wed, 23 Aug 2023 10:48:29 +0200
+Subject: [PATCH 21/55] ARM: dts: sti: Introduce 4KOpen-Box (stih418-b2264-box)
+ board
+
+# Conflicts:
+#	arch/arm/boot/dts/Makefile
+---
+ arch/arm/boot/dts/st/Makefile              |  3 ++-
+ arch/arm/boot/dts/st/stih418-b2264-box.dts | 14 ++++++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+ create mode 100644 arch/arm/boot/dts/st/stih418-b2264-box.dts
+
+diff --git a/arch/arm/boot/dts/st/Makefile b/arch/arm/boot/dts/st/Makefile
+index b3e9d29390e3..e61655dff9cb 100644
+--- a/arch/arm/boot/dts/st/Makefile
++++ b/arch/arm/boot/dts/st/Makefile
+@@ -17,7 +17,8 @@ dtb-$(CONFIG_ARCH_STI) += \
+ 	stih410-b2120.dtb \
+ 	stih410-b2260.dtb \
+ 	stih418-b2199.dtb \
+-	stih418-b2264.dtb
++	stih418-b2264.dtb \
++	stih418-b2264-box.dtb
+ dtb-$(CONFIG_ARCH_STM32) += \
+ 	stm32f429-disco.dtb \
+ 	stm32f469-disco.dtb \
+diff --git a/arch/arm/boot/dts/st/stih418-b2264-box.dts b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+new file mode 100644
+index 000000000000..162bd77dd993
+--- /dev/null
++++ b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+@@ -0,0 +1,14 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Copyright (C) 2021 STMicroelectronics
++ * Author: Jerome Audu <jerome.audu@st.com>
++ */
++/dts-v1/;
++
++#include "stih418-b2264.dts"
++/ {
++	model = "STiH418 B2264 with Box";
++	compatible = "st,stih418-b2264-box", "st,stih418-b2264", "st,stih418";
++	soc {
++	};
++};
+-- 
+2.41.0
+
+From 4fa40610f45b42ff85fc587763055f0cf8f40ea0 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Thu, 4 Mar 2021 22:11:15 +0100
+Subject: [PATCH 22/55] dts: arm: stih418-b2264-box: I2C available on Pin 3 /
+ Pin 5 of the GPIO 40 pins connector
+
+---
+ arch/arm/boot/dts/st/stih418-b2264-box.dts | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264-box.dts b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+index 162bd77dd993..81d0b1c4238c 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264-box.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+@@ -10,5 +10,15 @@ / {
+ 	model = "STiH418 B2264 with Box";
+ 	compatible = "st,stih418-b2264-box", "st,stih418-b2264", "st,stih418";
+ 	soc {
++		/* I2C available on Pin 3 / Pin 5 of the GPIO 40 pins connector */
++		i2c@9540000 {
++			status = "okay";
++		};
+ 	};
+ };
++
++&pwm1 {
++	pinctrl-0    = <&pinctrl_pwm1_chan0_default
++			&pinctrl_pwm1_chan1_default
++			&pinctrl_pwm1_chan3_default>;
++};
+-- 
+2.41.0
+
+From 56f50f3b16bc4279b521176dbaeb451f1d1cf79e Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Thu, 4 Mar 2021 22:13:51 +0100
+Subject: [PATCH 23/55] dts: arm: stih418-b2264-box: enable SSD1306 OLED
+ controller
+
+---
+ arch/arm/boot/dts/st/stih418-b2264-box.dts | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264-box.dts b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+index 81d0b1c4238c..c87f518e745e 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264-box.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+@@ -13,6 +13,17 @@ soc {
+ 		/* I2C available on Pin 3 / Pin 5 of the GPIO 40 pins connector */
+ 		i2c@9540000 {
+ 			status = "okay";
++			/* Define SSD1306 OLED controller based on ssd1307fb
++			 * and with I2C address 0x3c
++			 */
++			ssd1307: oled@3c {
++				compatible = "solomon,ssd1306fb-i2c";
++				reg = <0x3c>;
++				solomon,height = <64>;
++				solomon,width = <128>;
++				solomon,page-offset = <0>;
++				solomon,com-invdir;
++			};
+ 		};
+ 	};
+ };
+-- 
+2.41.0
+
+From 6a930f65e40d2054bdff161cf4ac508ce75d108d Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Thu, 4 Mar 2021 22:24:09 +0100
+Subject: [PATCH 24/55] dts: arm: stih418-b2264-box: front panel leds
+ declaration
+
+---
+ arch/arm/boot/dts/st/stih418-b2264-box.dts | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264-box.dts b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+index c87f518e745e..b756badabc15 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264-box.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264-box.dts
+@@ -25,6 +25,15 @@ ssd1307: oled@3c {
+ 				solomon,com-invdir;
+ 			};
+ 		};
++
++		leds {
++			compatible = "gpio-leds";
++			red {
++				label = "Front Panel LED";
++				gpios = <&pio4 1 GPIO_ACTIVE_HIGH>;
++				linux,default-trigger = "heartbeat";
++			};
++		};
+ 	};
+ };
+ 
+-- 
+2.41.0
+
+From 377be328838fe2d668e9c6f04550ee7cdbc878f4 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Fri, 9 Apr 2021 16:25:49 +0200
+Subject: [PATCH 25/55] ARM: configs: update b2264_defconfig (add reset
+ support)
+
+---
+ arch/arm/configs/b2264_defconfig | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/configs/b2264_defconfig b/arch/arm/configs/b2264_defconfig
+index 9e7e7e5a4042..9706f84ec6f6 100644
+--- a/arch/arm/configs/b2264_defconfig
++++ b/arch/arm/configs/b2264_defconfig
+@@ -140,6 +140,8 @@ CONFIG_SPI_ST_SSC4=m
+ CONFIG_SPI_SPIDEV=m
+ CONFIG_GPIO_SYSFS=y
+ CONFIG_GPIO_SYSCON=y
++CONFIG_POWER_RESET=y
++CONFIG_POWER_RESET_ST=y
+ # CONFIG_HWMON is not set
+ CONFIG_THERMAL=y
+ CONFIG_ST_THERMAL_MEMMAP=m
+-- 
+2.41.0
+
+From cd4ae5df56ea32edafd3324ade613360d51b6979 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 29 Sep 2021 17:08:06 +0200
+Subject: [PATCH 26/55] cpufreq: sti: align to mainline requierement
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 4 ----
+ drivers/clocksource/Kconfig            | 1 +
+ 2 files changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 9e5a64666170..bacac717c5ed 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -62,10 +62,6 @@ opp03 {
+ 			opp-hz = /bits/ 64 <1200000000>;
+ 			opp-microvolt = <784000>;
+ 		};
+-		opp04 {
+-			opp-hz = /bits/ 64 <1500000000>;
+-			opp-microvolt = <784000>;
+-		};
+ 	};
+ 
+ 	aliases {
+diff --git a/drivers/clocksource/Kconfig b/drivers/clocksource/Kconfig
+index c4d671a5a13d..c505910742f9 100644
+--- a/drivers/clocksource/Kconfig
++++ b/drivers/clocksource/Kconfig
+@@ -377,6 +377,7 @@ config ARM_GLOBAL_TIMER
+ 
+ config ARM_GT_INITIAL_PRESCALER_VAL
+ 	int "ARM global timer initial prescaler value"
++	default 12 if ARCH_STI
+ 	default 2 if ARCH_ZYNQ
+ 	default 1
+ 	depends on ARM_GLOBAL_TIMER
+-- 
+2.41.0
+
+From 52bc3be1645629eb4a118e89c61f30d3002e124d Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Fri, 10 Dec 2021 14:07:14 +0100
+Subject: [PATCH 28/55] pci: dwc: pcie-st: enable module support
+
+---
+ drivers/pci/controller/dwc/Kconfig    | 2 +-
+ drivers/pci/controller/dwc/pcie-sti.c | 7 ++++++-
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pci/controller/dwc/Kconfig b/drivers/pci/controller/dwc/Kconfig
+index 3b3c94f3b43d..e908374f4518 100644
+--- a/drivers/pci/controller/dwc/Kconfig
++++ b/drivers/pci/controller/dwc/Kconfig
+@@ -416,7 +416,7 @@ config PCIE_VISCONTI_HOST
+ 	  This driver supports TMPV7708 SoC.
+ 
+ config PCIE_STI
+-	bool "STMicroelectronics PCIe Controller for STi SoCs"
++	tristate "STMicroelectronics PCIe Controller for STi SoCs"
+ 	depends on ARCH_STI || COMPILE_TEST
+ 	depends on OF && PCI_MSI
+ 	select PCIE_DW_HOST
+diff --git a/drivers/pci/controller/dwc/pcie-sti.c b/drivers/pci/controller/dwc/pcie-sti.c
+index a069ef110801..f6f49871a52e 100644
+--- a/drivers/pci/controller/dwc/pcie-sti.c
++++ b/drivers/pci/controller/dwc/pcie-sti.c
+@@ -368,6 +368,7 @@ static const struct of_device_id st_pcie_of_match[] = {
+ 	{ .compatible = "st,stih407-pcie", },
+ 	{ },
+ };
++MODULE_DEVICE_TABLE(of, st_pcie_of_match);
+ 
+ static struct platform_driver st_pcie_driver __refdata = {
+ 	.probe  = st_pcie_probe,
+@@ -376,4 +377,8 @@ static struct platform_driver st_pcie_driver __refdata = {
+ 		.of_match_table = st_pcie_of_match,
+ 	},
+ };
+-builtin_platform_driver(st_pcie_driver);
++module_platform_driver(st_pcie_driver);
++
++MODULE_AUTHOR("Alain Volmat <avolmat@me.com>");
++MODULE_DESCRIPTION("STi PCIe Controller driver");
++MODULE_LICENSE("GPL v2");
+-- 
+2.41.0
+
+From 12cb83a745b374af69e4bd77e1c5f16a2d016189 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jerome.audu@st.com>
+Date: Fri, 10 Dec 2021 16:02:17 +0100
+Subject: [PATCH 29/55] pci: dwc: pcie-st: fix probe entry
+
+__init can't be user with probe function since it call be call
+several time due to -DEFERT. And __init keyword tells the linker to
+place the code in a dedicated section into the kernel object file.
+This section is known in advance to the kernel, and freed when
+the module is loaded and the init function finished
+
+https://www.oreilly.com/library/view/linux-device-drivers/9781785280009/e636c201-5e6f-4ddb-a4b3-9bd72f71b9b0.xhtml
+---
+ drivers/pci/controller/dwc/pcie-sti.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/pci/controller/dwc/pcie-sti.c b/drivers/pci/controller/dwc/pcie-sti.c
+index f6f49871a52e..c54eda6d80c9 100644
+--- a/drivers/pci/controller/dwc/pcie-sti.c
++++ b/drivers/pci/controller/dwc/pcie-sti.c
+@@ -288,7 +288,7 @@ static const struct dw_pcie_ops dw_pcie_ops = {
+ 	.start_link = st_pcie_start_link,
+ };
+ 
+-static int __init st_pcie_probe(struct platform_device *pdev)
++static int st_pcie_probe(struct platform_device *pdev)
+ {
+ 	struct st_pcie *pcie;
+ 	struct dw_pcie *dw;
+-- 
+2.41.0
+
+From 67dc7ab0bc41f5871c74b180226e90af54d85402 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 28 Jul 2022 19:18:46 +0200
+Subject: [PATCH 30/55] ARM: dts: sti: move sti-sasg-codec node outside of soc
+
+Being placed as a child of the syscon-core node, the sti-sasg-codec
+driver is not properly probed.  In order to fix this it has to be
+moved outside of the syscon-core node but since it doesn't have
+a reg property, it is now placed outside of the soc part to avoid
+getting W=1 warnings.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 14 +++++++-------
+ arch/arm/boot/dts/st/stihxxx-b2120.dtsi  | 14 ++++++--------
+ 2 files changed, 13 insertions(+), 15 deletions(-)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index f658f882b77b..ade96da999f3 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -233,6 +233,13 @@ st231_delta: st231-delta {
+ 		mboxes = <&mailbox0 0 0>, <&mailbox3 0 1>, <&mailbox0 0 1>, <&mailbox3 0 0>;
+ 	};
+ 
++	sti_sasg_codec: sti-sasg-codec {
++		compatible = "st,stih407-sas-codec";
++		#sound-dai-cells = <1>;
++		status = "disabled";
++		st,syscfg = <&syscfg_core>;
++	};
++
+ 	delta0 {
+ 		compatible = "st,st-delta";
+ 		clock-names = "delta",
+@@ -278,13 +285,6 @@ syscfg_sbc_reg: fvdp-lite-syscfg@9600000 {
+ 		syscfg_core: core-syscfg@92b0000 {
+ 			compatible = "st,stih407-core-syscfg", "syscon";
+ 			reg = <0x92b0000 0x1000>;
+-
+-			sti_sasg_codec: sti-sasg-codec {
+-				compatible = "st,stih407-sas-codec";
+-				#sound-dai-cells = <1>;
+-				status = "disabled";
+-				st,syscfg = <&syscfg_core>;
+-			};
+ 		};
+ 
+ 		syscfg_lpm: lpm-syscfg@94b5100 {
+diff --git a/arch/arm/boot/dts/st/stihxxx-b2120.dtsi b/arch/arm/boot/dts/st/stihxxx-b2120.dtsi
+index 8d9a2dfa76f1..aec49602421b 100644
+--- a/arch/arm/boot/dts/st/stihxxx-b2120.dtsi
++++ b/arch/arm/boot/dts/st/stihxxx-b2120.dtsi
+@@ -82,6 +82,12 @@ phy_port1: port@9b2a000 {
+ 		};
+ 	};
+ 
++	sti_sasg_codec: sti-sasg-codec {
++		status = "okay";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_spdif_out>;
++	};
++
+ 	soc {
+ 		sbc_serial0: serial@9530000 {
+ 			status = "okay";
+@@ -194,13 +200,5 @@ sti_uni_player2: sti-uni-player@8d82000 {
+ 		sti_uni_player3: sti-uni-player@8d85000 {
+ 			status = "okay";
+ 		};
+-
+-		syscfg_core: core-syscfg@92b0000 {
+-			sti_sasg_codec: sti-sasg-codec {
+-				status = "okay";
+-				pinctrl-names = "default";
+-				pinctrl-0 = <&pinctrl_spdif_out>;
+-			};
+-		};
+ 	};
+ };
+-- 
+2.41.0
+
+From f0aaf93ba1e89a7850e113178d5aaf21ac3d1ded Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 28 Jul 2022 19:20:57 +0200
+Subject: [PATCH 31/55] ARM: dt: sti: enable analog audio output on
+ stih418-b2264
+
+The 4KOpen board (B2264) has an analog audio output available.
+This commit enables it by relying on the sti-uni-player2 and
+sti-sasg-codec.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 31 ++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index bacac717c5ed..0e65759afea6 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -69,6 +69,29 @@ aliases {
+ 		ethernet0 = &ethernet0;
+ 	};
+ 
++	sound: sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,name = "STI-B2264";
++		status = "okay";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		simple-audio-card,dai-link@0 {
++			reg = <0>;
++			/* DAC */
++			format = "i2s";
++			mclk-fs = <256>;
++			frame-inversion;
++			cpu {
++				sound-dai = <&sti_uni_player2>;
++			};
++
++			codec {
++				sound-dai = <&sti_sasg_codec 1>;
++			};
++		};
++	};
++
+ 	soc {
+ 		leds {
+ 			compatible = "gpio-leds";
+@@ -180,3 +203,11 @@ partition@3 {
+ &st_dwc3 {
+ 	status = "okay";
+ };
++
++&sti_uni_player2 {
++	status = "okay";
++};
++
++&sti_sasg_codec {
++	status = "okay";
++};
+-- 
+2.41.0
+
+From 968fbca3485ca9017e25634500b585c90ed21368 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Fri, 2 Sep 2022 11:59:21 +0200
+Subject: [PATCH 32/55] ARM: dts: sti: enable USB3 LPM on dwc3 controleur
+
+Enable USB3 LPM support and also enable u1/u2 quirk
+to keep gadget working with lpm
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index ade96da999f3..832ea9d0b0ac 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -774,6 +774,9 @@ dwc3: usb@9900000 {
+ 				phys = <&usb2_picophy0>,
+ 				       <&phy_port2 PHY_TYPE_USB3>;
+ 				snps,dis_u3_susphy_quirk;
++				snps,usb3_lpm_capable;
++				snps,dis-u1-entry-quirk;
++				snps,dis-u2-entry-quirk;
+ 			};
+ 		};
+ 
+-- 
+2.41.0
+
+From fe7d5a0289a1389524ed7c2188763e33e79c6fa2 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:01:58 +0100
+Subject: [PATCH 33/55] usb: dwc3: st: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/usb/dwc3/dwc3-st.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/usb/dwc3/dwc3-st.c b/drivers/usb/dwc3/dwc3-st.c
+index 211360eee95a..aa865d254265 100644
+--- a/drivers/usb/dwc3/dwc3-st.c
++++ b/drivers/usb/dwc3/dwc3-st.c
+@@ -315,7 +315,6 @@ static void st_dwc3_remove(struct platform_device *pdev)
+ 	reset_control_assert(dwc3_data->rstc_rst);
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int st_dwc3_suspend(struct device *dev)
+ {
+ 	struct st_dwc3 *dwc3_data = dev_get_drvdata(dev);
+@@ -349,9 +348,8 @@ static int st_dwc3_resume(struct device *dev)
+ 
+ 	return 0;
+ }
+-#endif /* CONFIG_PM_SLEEP */
+ 
+-static SIMPLE_DEV_PM_OPS(st_dwc3_dev_pm_ops, st_dwc3_suspend, st_dwc3_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(st_dwc3_dev_pm_ops, st_dwc3_suspend, st_dwc3_resume);
+ 
+ static const struct of_device_id st_dwc3_match[] = {
+ 	{ .compatible = "st,stih407-dwc3" },
+@@ -366,7 +364,7 @@ static struct platform_driver st_dwc3_driver = {
+ 	.driver = {
+ 		.name = "usb-st-dwc3",
+ 		.of_match_table = st_dwc3_match,
+-		.pm = &st_dwc3_dev_pm_ops,
++		.pm = pm_sleep_ptr(&st_dwc3_dev_pm_ops),
+ 	},
+ };
+ 
+-- 
+2.41.0
+
+From 51572585dc6d6b49fbef3312d8df4372a2d14002 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:11:43 +0100
+Subject: [PATCH 34/55] mmc: sdhci-st: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/mmc/host/sdhci-st.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/mmc/host/sdhci-st.c b/drivers/mmc/host/sdhci-st.c
+index 6415916fbd91..7e089df37602 100644
+--- a/drivers/mmc/host/sdhci-st.c
++++ b/drivers/mmc/host/sdhci-st.c
+@@ -450,7 +450,6 @@ static int sdhci_st_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int sdhci_st_suspend(struct device *dev)
+ {
+ 	struct sdhci_host *host = dev_get_drvdata(dev);
+@@ -497,9 +496,8 @@ static int sdhci_st_resume(struct device *dev)
+ 
+ 	return sdhci_resume_host(host);
+ }
+-#endif
+ 
+-static SIMPLE_DEV_PM_OPS(sdhci_st_pmops, sdhci_st_suspend, sdhci_st_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(sdhci_st_pmops, sdhci_st_suspend, sdhci_st_resume);
+ 
+ static const struct of_device_id st_sdhci_match[] = {
+ 	{ .compatible = "st,sdhci" },
+@@ -514,7 +512,7 @@ static struct platform_driver sdhci_st_driver = {
+ 	.driver = {
+ 		   .name = "sdhci-st",
+ 		   .probe_type = PROBE_PREFER_ASYNCHRONOUS,
+-		   .pm = &sdhci_st_pmops,
++		   .pm = pm_sleep_ptr(&sdhci_st_pmops),
+ 		   .of_match_table = st_sdhci_match,
+ 		  },
+ };
+-- 
+2.41.0
+
+From 8c903ef97f491bc740333c6f23878131c4e5eebc Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:16:59 +0100
+Subject: [PATCH 35/55] mtd: st_spi_fsm: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/mtd/devices/st_spi_fsm.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/mtd/devices/st_spi_fsm.c b/drivers/mtd/devices/st_spi_fsm.c
+index 4810e3d8a414..70a834b2ce85 100644
+--- a/drivers/mtd/devices/st_spi_fsm.c
++++ b/drivers/mtd/devices/st_spi_fsm.c
+@@ -2118,7 +2118,6 @@ static int stfsm_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int stfsmfsm_suspend(struct device *dev)
+ {
+ 	struct stfsm *fsm = dev_get_drvdata(dev);
+@@ -2134,9 +2133,8 @@ static int stfsmfsm_resume(struct device *dev)
+ 
+ 	return clk_prepare_enable(fsm->clk);
+ }
+-#endif
+ 
+-static SIMPLE_DEV_PM_OPS(stfsm_pm_ops, stfsmfsm_suspend, stfsmfsm_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(stfsm_pm_ops, stfsmfsm_suspend, stfsmfsm_resume);
+ 
+ static const struct of_device_id stfsm_match[] = {
+ 	{ .compatible = "st,spi-fsm", },
+@@ -2150,7 +2148,7 @@ static struct platform_driver stfsm_driver = {
+ 	.driver		= {
+ 		.name	= "st-spi-fsm",
+ 		.of_match_table = stfsm_match,
+-		.pm     = &stfsm_pm_ops,
++		.pm     = pm_sleep_ptr(&stfsm_pm_ops),
+ 	},
+ };
+ module_platform_driver(stfsm_driver);
+-- 
+2.41.0
+
+From 6e4572d02ea46c81f0c84993a7eb0cf144a60e1d Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:21:59 +0100
+Subject: [PATCH 36/55] ahci: st: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/ata/ahci_st.c | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/ata/ahci_st.c b/drivers/ata/ahci_st.c
+index d4a626f87963..8fddc58641e4 100644
+--- a/drivers/ata/ahci_st.c
++++ b/drivers/ata/ahci_st.c
+@@ -177,7 +177,6 @@ static int st_ahci_probe(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int st_ahci_suspend(struct device *dev)
+ {
+ 	struct ata_host *host = dev_get_drvdata(dev);
+@@ -222,9 +221,8 @@ static int st_ahci_resume(struct device *dev)
+ 
+ 	return ahci_platform_resume_host(dev);
+ }
+-#endif
+ 
+-static SIMPLE_DEV_PM_OPS(st_ahci_pm_ops, st_ahci_suspend, st_ahci_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(st_ahci_pm_ops, st_ahci_suspend, st_ahci_resume);
+ 
+ static const struct of_device_id st_ahci_match[] = {
+ 	{ .compatible = "st,ahci", },
+@@ -235,7 +233,7 @@ MODULE_DEVICE_TABLE(of, st_ahci_match);
+ static struct platform_driver st_ahci_driver = {
+ 	.driver = {
+ 		.name = DRV_NAME,
+-		.pm = &st_ahci_pm_ops,
++		.pm = pm_sleep_ptr(&st_ahci_pm_ops),
+ 		.of_match_table = st_ahci_match,
+ 	},
+ 	.probe = st_ahci_probe,
+-- 
+2.41.0
+
+From e7b455d2ff8773cb9a8a89682ecf49426b275851 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:26:13 +0100
+Subject: [PATCH 37/55] net: stmmac: sti: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/net/ethernet/stmicro/stmmac/dwmac-sti.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/ethernet/stmicro/stmmac/dwmac-sti.c b/drivers/net/ethernet/stmicro/stmmac/dwmac-sti.c
+index dcbb17c4f07a..ae529a9e7201 100644
+--- a/drivers/net/ethernet/stmicro/stmmac/dwmac-sti.c
++++ b/drivers/net/ethernet/stmicro/stmmac/dwmac-sti.c
+@@ -326,7 +326,6 @@ static void sti_dwmac_remove(struct platform_device *pdev)
+ 	clk_disable_unprepare(dwmac->clk);
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int sti_dwmac_suspend(struct device *dev)
+ {
+ 	struct sti_dwmac *dwmac = get_stmmac_bsp_priv(dev);
+@@ -346,10 +345,9 @@ static int sti_dwmac_resume(struct device *dev)
+ 
+ 	return stmmac_resume(dev);
+ }
+-#endif /* CONFIG_PM_SLEEP */
+ 
+-static SIMPLE_DEV_PM_OPS(sti_dwmac_pm_ops, sti_dwmac_suspend,
+-					   sti_dwmac_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(sti_dwmac_pm_ops, sti_dwmac_suspend,
++						  sti_dwmac_resume);
+ 
+ static const struct sti_dwmac_of_data stih4xx_dwmac_data = {
+ 	.fix_retime_src = stih4xx_fix_retime_src,
+@@ -366,7 +364,7 @@ static struct platform_driver sti_dwmac_driver = {
+ 	.remove_new = sti_dwmac_remove,
+ 	.driver = {
+ 		.name           = "sti-dwmac",
+-		.pm		= &sti_dwmac_pm_ops,
++		.pm		= pm_sleep_ptr(&sti_dwmac_pm_ops),
+ 		.of_match_table = sti_dwmac_match,
+ 	},
+ };
+-- 
+2.41.0
+
+From 9b5c89045face46a5dbc1c97465c5f7c12502664 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Mon, 9 Jan 2023 15:30:44 +0100
+Subject: [PATCH 38/55] serial: st-asc: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/tty/serial/st-asc.c | 10 +++-------
+ 1 file changed, 3 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/tty/serial/st-asc.c b/drivers/tty/serial/st-asc.c
+index aa471c9c24d9..971b65e4067d 100644
+--- a/drivers/tty/serial/st-asc.c
++++ b/drivers/tty/serial/st-asc.c
+@@ -801,7 +801,6 @@ static int asc_serial_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int asc_serial_suspend(struct device *dev)
+ {
+ 	struct uart_port *port = dev_get_drvdata(dev);
+@@ -816,8 +815,6 @@ static int asc_serial_resume(struct device *dev)
+ 	return uart_resume_port(&asc_uart_driver, port);
+ }
+ 
+-#endif /* CONFIG_PM_SLEEP */
+-
+ /*----------------------------------------------------------------------*/
+ 
+ #ifdef CONFIG_SERIAL_ST_ASC_CONSOLE
+@@ -925,16 +922,15 @@ static struct uart_driver asc_uart_driver = {
+ 	.cons		= ASC_SERIAL_CONSOLE,
+ };
+ 
+-static const struct dev_pm_ops asc_serial_pm_ops = {
+-	SET_SYSTEM_SLEEP_PM_OPS(asc_serial_suspend, asc_serial_resume)
+-};
++static DEFINE_SIMPLE_DEV_PM_OPS(asc_serial_pm_ops, asc_serial_suspend,
++						   asc_serial_resume);
+ 
+ static struct platform_driver asc_serial_driver = {
+ 	.probe		= asc_serial_probe,
+ 	.remove		= asc_serial_remove,
+ 	.driver	= {
+ 		.name	= DRIVER_NAME,
+-		.pm	= &asc_serial_pm_ops,
++		.pm	= pm_sleep_ptr(&asc_serial_pm_ops),
+ 		.of_match_table = of_match_ptr(asc_match),
+ 	},
+ };
+-- 
+2.41.0
+
+From d915770c8716ac6418f9502978a6628994bcccee Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:35:39 +0100
+Subject: [PATCH 39/55] thermal: sti: Switch from CONFIG_PM_SLEEP guards to
+ pm_sleep_ptr()
+
+Letting the compiler remove these functions when the kernel is built
+without CONFIG_PM_SLEEP support is simpler and less error prone than the
+use of #ifdef based kernel configuration guards.
+
+Link: https://lore.kernel.org/r/20220801114211.36267-6-andriy.shevchenko@linux.intel.com
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/thermal/st/st_thermal.c        | 4 +---
+ drivers/thermal/st/st_thermal_memmap.c | 2 +-
+ drivers/thermal/st/stm_thermal.c       | 8 +++-----
+ 3 files changed, 5 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/thermal/st/st_thermal.c b/drivers/thermal/st/st_thermal.c
+index 0d6249b36609..ede7bb0fabf5 100644
+--- a/drivers/thermal/st/st_thermal.c
++++ b/drivers/thermal/st/st_thermal.c
+@@ -236,7 +236,6 @@ void st_thermal_unregister(struct platform_device *pdev)
+ }
+ EXPORT_SYMBOL_GPL(st_thermal_unregister);
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int st_thermal_suspend(struct device *dev)
+ {
+ 	struct st_thermal_sensor *sensor = dev_get_drvdata(dev);
+@@ -265,9 +264,8 @@ static int st_thermal_resume(struct device *dev)
+ 
+ 	return 0;
+ }
+-#endif
+ 
+-SIMPLE_DEV_PM_OPS(st_thermal_pm_ops, st_thermal_suspend, st_thermal_resume);
++DEFINE_SIMPLE_DEV_PM_OPS(st_thermal_pm_ops, st_thermal_suspend, st_thermal_resume);
+ EXPORT_SYMBOL_GPL(st_thermal_pm_ops);
+ 
+ MODULE_AUTHOR("STMicroelectronics (R&D) Limited <ajitpal.singh@st.com>");
+diff --git a/drivers/thermal/st/st_thermal_memmap.c b/drivers/thermal/st/st_thermal_memmap.c
+index e8cfa83b724a..9797192b99f8 100644
+--- a/drivers/thermal/st/st_thermal_memmap.c
++++ b/drivers/thermal/st/st_thermal_memmap.c
+@@ -180,7 +180,7 @@ static void st_mmap_remove(struct platform_device *pdev)
+ static struct platform_driver st_mmap_thermal_driver = {
+ 	.driver = {
+ 		.name	= "st_thermal_mmap",
+-		.pm     = &st_thermal_pm_ops,
++		.pm     = pm_sleep_ptr(&st_thermal_pm_ops),
+ 		.of_match_table = st_mmap_thermal_of_match,
+ 	},
+ 	.probe		= st_mmap_probe,
+diff --git a/drivers/thermal/st/stm_thermal.c b/drivers/thermal/st/stm_thermal.c
+index 903fcf1763f1..49e54b437c63 100644
+--- a/drivers/thermal/st/stm_thermal.c
++++ b/drivers/thermal/st/stm_thermal.c
+@@ -442,7 +442,6 @@ static int stm_thermal_prepare(struct stm_thermal_sensor *sensor)
+ 	return ret;
+ }
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int stm_thermal_suspend(struct device *dev)
+ {
+ 	struct stm_thermal_sensor *sensor = dev_get_drvdata(dev);
+@@ -468,10 +467,9 @@ static int stm_thermal_resume(struct device *dev)
+ 
+ 	return 0;
+ }
+-#endif /* CONFIG_PM_SLEEP */
+ 
+-static SIMPLE_DEV_PM_OPS(stm_thermal_pm_ops,
+-			 stm_thermal_suspend, stm_thermal_resume);
++static DEFINE_SIMPLE_DEV_PM_OPS(stm_thermal_pm_ops,
++				stm_thermal_suspend, stm_thermal_resume);
+ 
+ static const struct thermal_zone_device_ops stm_tz_ops = {
+ 	.get_temp	= stm_thermal_get_temp,
+@@ -584,7 +582,7 @@ static int stm_thermal_remove(struct platform_device *pdev)
+ static struct platform_driver stm_thermal_driver = {
+ 	.driver = {
+ 		.name	= "stm_thermal",
+-		.pm     = &stm_thermal_pm_ops,
++		.pm     = pm_sleep_ptr(&stm_thermal_pm_ops),
+ 		.of_match_table = stm_thermal_of_match,
+ 	},
+ 	.probe		= stm_thermal_probe,
+-- 
+2.41.0
+
+From 1f0cb588fe681919284d8f5b70a3d5e15fd88d20 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:20:38 +0100
+Subject: [PATCH 40/55] thermal: sti: remove dead entry
+
+"st,passive_cooling_temp" is not part of kernel sources
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ Documentation/devicetree/bindings/thermal/st-thermal.txt | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/thermal/st-thermal.txt b/Documentation/devicetree/bindings/thermal/st-thermal.txt
+index a2f939137e35..d017e71c5f27 100644
+--- a/Documentation/devicetree/bindings/thermal/st-thermal.txt
++++ b/Documentation/devicetree/bindings/thermal/st-thermal.txt
+@@ -28,5 +28,4 @@ Example:
+ 		clock-names = "thermal";
+ 		clocks = <&CLK_SYSIN>;
+ 		interrupts = <GIC_SPI 205 IRQ_TYPE_EDGE_RISING>;
+-		st,passive_cooling_temp = <110>;
+ 	};
+-- 
+2.41.0
+
+From 3c5ed7b41e08356b1ee76fad7dacd1aa4bea5a00 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:39:48 +0100
+Subject: [PATCH 41/55] dts: arm: stih418: add alias for CPUs
+
+this is needed for futur thermal-zones patches
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 4 ++--
+ arch/arm/boot/dts/st/stih418.dtsi        | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index 832ea9d0b0ac..10b85a930d72 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -33,7 +33,7 @@ delta_reserved: rproc@44000000 {
+ 	cpus {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+-		cpu@0 {
++		cpu0: cpu@0 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a9";
+ 			reg = <0>;
+@@ -53,7 +53,7 @@ cpu@0 {
+ 			cpu0-supply = <&pwm_regulator>;
+ 			st,syscfg = <&syscfg_core 0x8e0>;
+ 		};
+-		cpu@1 {
++		cpu1: cpu@1 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a9";
+ 			reg = <1>;
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index b35b9b7a7ccc..0e5bdbb802c7 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -10,14 +10,14 @@ / {
+ 	cpus {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+-		cpu@2 {
++		cpu2: cpu@2 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a9";
+ 			reg = <2>;
+ 			/* u-boot puts hpen in SBC dmem at 0xa4 offset */
+ 			cpu-release-addr = <0x94100A4>;
+ 		};
+-		cpu@3 {
++		cpu3: cpu@3 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a9";
+ 			reg = <3>;
+-- 
+2.41.0
+
+From 85fffd788b9ce908122a7304e09357021831a84f Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:45:38 +0100
+Subject: [PATCH 42/55] dts: arm: stih418: add new alias for thermal entry
+
+this is needed for futur thermal-zones patches
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih418.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index 0e5bdbb802c7..5c05daa27852 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -107,7 +107,7 @@ mmc0: sdhci@9060000 {
+ 			assigned-clock-rates = <200000000>;
+ 		};
+ 
+-		thermal@91a0000 {
++		thermal: thermal@91a0000 {
+ 			compatible = "st,stih407-thermal";
+ 			reg = <0x91a0000 0x28>;
+ 			clock-names = "thermal";
+-- 
+2.41.0
+
+From bdbdf7df9692bd555472b295ef981110eb87ef16 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:50:23 +0100
+Subject: [PATCH 43/55] dts: arm: stih418: add thermal-zones support
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Need to add #cooling-cells entry for earch CPUs
+- thermal-zones rely on thermal alias for T° sensor
+- cooling will be done on CPUs using cpufreq framework
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi |  2 ++
+ arch/arm/boot/dts/st/stih418.dtsi        | 36 ++++++++++++++++++++++++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index 10b85a930d72..af8d82bd99d4 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -52,6 +52,7 @@ cpu0: cpu@0 {
+ 			clock-latency = <100000>;
+ 			cpu0-supply = <&pwm_regulator>;
+ 			st,syscfg = <&syscfg_core 0x8e0>;
++			#cooling-cells = <2>;
+ 		};
+ 		cpu1: cpu@1 {
+ 			device_type = "cpu";
+@@ -66,6 +67,7 @@ cpu1: cpu@1 {
+ 					    1200000 0
+ 					    800000  0
+ 					    500000  0>;
++			#cooling-cells = <2>;
+ 		};
+ 	};
+ 
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index 5c05daa27852..8fb8b3af5e49 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -6,6 +6,7 @@
+ #include "stih418-clock.dtsi"
+ #include "stih407-family.dtsi"
+ #include "stih410-pinctrl.dtsi"
++#include <dt-bindings/thermal/thermal.h>
+ / {
+ 	cpus {
+ 		#address-cells = <1>;
+@@ -16,6 +17,7 @@ cpu2: cpu@2 {
+ 			reg = <2>;
+ 			/* u-boot puts hpen in SBC dmem at 0xa4 offset */
+ 			cpu-release-addr = <0x94100A4>;
++			#cooling-cells = <2>;
+ 		};
+ 		cpu3: cpu@3 {
+ 			device_type = "cpu";
+@@ -23,6 +25,7 @@ cpu3: cpu@3 {
+ 			reg = <3>;
+ 			/* u-boot puts hpen in SBC dmem at 0xa4 offset */
+ 			cpu-release-addr = <0x94100A4>;
++			#cooling-cells = <2>;
+ 		};
+ 	};
+ 
+@@ -44,6 +47,38 @@ usb2_picophy2: phy3 {
+ 		reset-names = "global", "port";
+ 	};
+ 
++	thermal-zones {
++		cpu_thermal: cpu-thermal {
++			polling-delay-passive = <250>;  /* 250ms */
++			polling-delay = <1000>;         /* 1000ms */
++
++			thermal-sensors = <&thermal>;
++
++			trips {
++				cpu_crit: cpu-crit {
++					temperature = <95000>;  /* 95C */
++					hysteresis = <2000>;
++					type = "critical";
++				};
++				cpu_alert: cpu-alert {
++					temperature = <85000>;  /* 85C */
++					hysteresis = <2000>;
++					type = "passive";
++				};
++			};
++
++			cooling-maps {
++				map {
++					trip = <&cpu_alert>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
++		};
++	};
++
+ 	soc {
+ 		rng11: rng@8a8a000 {
+ 			status = "disabled";
+@@ -113,6 +148,7 @@ thermal: thermal@91a0000 {
+ 			clock-names = "thermal";
+ 			clocks = <&clk_sysin>;
+ 			interrupts = <GIC_SPI 205 IRQ_TYPE_EDGE_RISING>;
++			#thermal-sensor-cells = <0>;
+ 		};
+ 	};
+ };
+-- 
+2.41.0
+
+From 0839479c62c03a4c5580d5d2b927574419282acf Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Wed, 1 Mar 2023 22:44:17 +0100
+Subject: [PATCH 44/55] thermal: sti: switch to thermal_of_zone to handle
+ thermal-zones
+
+replace thermal_zone_device_register() by devm_thermal_of_zone_register()
+and remove ops st_thermal_get_trip_type, st_thermal_get_trip_temp
+
+Signed-off-by: Jerome Audu <jau@free.fr>
+---
+ drivers/thermal/st/Kconfig      |  1 +
+ drivers/thermal/st/st_thermal.c | 21 +++++++++++----------
+ 2 files changed, 12 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/thermal/st/Kconfig b/drivers/thermal/st/Kconfig
+index ecbdf4ef00f4..258c2260d907 100644
+--- a/drivers/thermal/st/Kconfig
++++ b/drivers/thermal/st/Kconfig
+@@ -5,6 +5,7 @@
+ 
+ config ST_THERMAL
+ 	tristate "Thermal sensors on STMicroelectronics STi series of SoCs"
++	depends on OF
+ 	help
+ 	  Support for thermal sensors on STMicroelectronics STi series of SoCs.
+ 
+diff --git a/drivers/thermal/st/st_thermal.c b/drivers/thermal/st/st_thermal.c
+index ede7bb0fabf5..40b02cb9afb1 100644
+--- a/drivers/thermal/st/st_thermal.c
++++ b/drivers/thermal/st/st_thermal.c
+@@ -12,6 +12,7 @@
+ #include <linux/of_device.h>
+ 
+ #include "st_thermal.h"
++#include "../thermal_hwmon.h"
+ 
+ /* The Thermal Framework expects millidegrees */
+ #define mcelsius(temp)			((temp) * 1000)
+@@ -203,23 +204,22 @@ int st_thermal_register(struct platform_device *pdev,
+ 	trip.type = THERMAL_TRIP_CRITICAL;
+ 
+ 	sensor->thermal_dev =
+-		thermal_zone_device_register_with_trips(dev_name(dev), &trip, 1, 0, sensor,
+-							&st_tz_ops, NULL, 0, polling_delay);
++		devm_thermal_of_zone_register(dev, 0, sensor, &st_tz_ops);
+ 	if (IS_ERR(sensor->thermal_dev)) {
+-		dev_err(dev, "failed to register thermal zone device\n");
++		dev_err(dev, "failed to register thermal of zone\n");
+ 		ret = PTR_ERR(sensor->thermal_dev);
+ 		goto sensor_off;
+ 	}
+-	ret = thermal_zone_device_enable(sensor->thermal_dev);
+-	if (ret)
+-		goto tzd_unregister;
+ 
+ 	platform_set_drvdata(pdev, sensor);
+ 
+-	return 0;
++	/*
++	 * Thermal_zone doesn't enable hwmon as default,
++	 * enable it here
++	 */
++	sensor->thermal_dev->tzp->no_hwmon = false;
++	return thermal_add_hwmon_sysfs(sensor->thermal_dev);
+ 
+-tzd_unregister:
+-	thermal_zone_device_unregister(sensor->thermal_dev);
+ sensor_off:
+ 	st_thermal_sensor_off(sensor);
+ 
+@@ -232,7 +232,8 @@ void st_thermal_unregister(struct platform_device *pdev)
+ 	struct st_thermal_sensor *sensor = platform_get_drvdata(pdev);
+ 
+ 	st_thermal_sensor_off(sensor);
+-	thermal_zone_device_unregister(sensor->thermal_dev);
++	thermal_remove_hwmon_sysfs(sensor->thermal_dev);
++	devm_thermal_of_zone_unregister(sensor->dev, sensor->thermal_dev);
+ }
+ EXPORT_SYMBOL_GPL(st_thermal_unregister);
+ 
+-- 
+2.41.0
+
+From cc50f8fc7ebadaa881256303b06edd22455ec2ae Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Tue, 17 Jan 2023 22:48:30 +0100
+Subject: [PATCH 45/55] spi: st: replace ifdef CONFIG_PM with pm_sleep_ptr
+ usage
+
+Avoid ifdef CONFIG_PM and ifdef CONFIG_PM_SLEEP sections with
+the code and rely on pm_sleep_ptr to set pm ops.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/spi/spi-st-ssc4.c | 6 +-----
+ 1 file changed, 1 insertion(+), 5 deletions(-)
+
+diff --git a/drivers/spi/spi-st-ssc4.c b/drivers/spi/spi-st-ssc4.c
+index 7fcff9c539e2..f68f5f647861 100644
+--- a/drivers/spi/spi-st-ssc4.c
++++ b/drivers/spi/spi-st-ssc4.c
+@@ -378,7 +378,6 @@ static void spi_st_remove(struct platform_device *pdev)
+ 	pinctrl_pm_select_sleep_state(&pdev->dev);
+ }
+ 
+-#ifdef CONFIG_PM
+ static int spi_st_runtime_suspend(struct device *dev)
+ {
+ 	struct spi_master *master = dev_get_drvdata(dev);
+@@ -403,9 +402,7 @@ static int spi_st_runtime_resume(struct device *dev)
+ 
+ 	return ret;
+ }
+-#endif
+ 
+-#ifdef CONFIG_PM_SLEEP
+ static int spi_st_suspend(struct device *dev)
+ {
+ 	struct spi_master *master = dev_get_drvdata(dev);
+@@ -429,7 +426,6 @@ static int spi_st_resume(struct device *dev)
+ 
+ 	return pm_runtime_force_resume(dev);
+ }
+-#endif
+ 
+ static const struct dev_pm_ops spi_st_pm = {
+ 	SET_SYSTEM_SLEEP_PM_OPS(spi_st_suspend, spi_st_resume)
+@@ -445,7 +441,7 @@ MODULE_DEVICE_TABLE(of, stm_spi_match);
+ static struct platform_driver spi_st_driver = {
+ 	.driver = {
+ 		.name = "spi-st",
+-		.pm = &spi_st_pm,
++		.pm = pm_sleep_ptr(&spi_st_pm),
+ 		.of_match_table = of_match_ptr(stm_spi_match),
+ 	},
+ 	.probe = spi_st_probe,
+-- 
+2.41.0
+
+From 256680c063b01c4a21fe192c7c4dc5949305d261 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Tue, 17 Jan 2023 22:50:11 +0100
+Subject: [PATCH 46/55] spi: st: does not mandate chip select gpio
+
+The spi controller itself does not mandate to have a proper
+chip select defined so no need to enforce a valid cs_gpio.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/spi/spi-st-ssc4.c | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/drivers/spi/spi-st-ssc4.c b/drivers/spi/spi-st-ssc4.c
+index f68f5f647861..0a1b32452d91 100644
+--- a/drivers/spi/spi-st-ssc4.c
++++ b/drivers/spi/spi-st-ssc4.c
+@@ -183,11 +183,6 @@ static int spi_st_setup(struct spi_device *spi)
+ 		return -EINVAL;
+ 	}
+ 
+-	if (!spi_get_csgpiod(spi, 0)) {
+-		dev_err(&spi->dev, "no valid gpio assigned\n");
+-		return -EINVAL;
+-	}
+-
+ 	spi_st_clk = clk_get_rate(spi_st->clk);
+ 
+ 	/* Set SSC_BRF */
+-- 
+2.41.0
+
+From f1ae04f9cf84b0a13ab997d7eba7652496f9ac8e Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Mon, 23 Jan 2023 21:08:54 +0100
+Subject: [PATCH 47/55] ARM: sti: removal of stih415/stih416 related entries
+
+ST's STiH415 and STiH416 platforms have already been removed since
+a while.  Remove some remaining bits within the mach-sti.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/mach-sti/board-dt.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/arch/arm/mach-sti/board-dt.c b/arch/arm/mach-sti/board-dt.c
+index ffecbf29646f..8c313f07bd02 100644
+--- a/arch/arm/mach-sti/board-dt.c
++++ b/arch/arm/mach-sti/board-dt.c
+@@ -12,8 +12,6 @@
+ #include "smp.h"
+ 
+ static const char *const stih41x_dt_match[] __initconst = {
+-	"st,stih415",
+-	"st,stih416",
+ 	"st,stih407",
+ 	"st,stih410",
+ 	"st,stih418",
+-- 
+2.41.0
+
+From feb3023b4b17caf00d03d825e2286ef39f8454f8 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Mon, 23 Jan 2023 21:20:47 +0100
+Subject: [PATCH 48/55] dt-bindings: arm: sti: remove bindings for stih415 and
+ stih416
+
+STiH415 and STiH416 platforms are no more supported hence remove
+the bindings for those two platforms.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ Documentation/devicetree/bindings/arm/sti.yaml | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/arm/sti.yaml b/Documentation/devicetree/bindings/arm/sti.yaml
+index 3ca054c64377..a2822f4d60e7 100644
+--- a/Documentation/devicetree/bindings/arm/sti.yaml
++++ b/Documentation/devicetree/bindings/arm/sti.yaml
+@@ -15,8 +15,6 @@ properties:
+   compatible:
+     items:
+       - enum:
+-          - st,stih415
+-          - st,stih416
+           - st,stih407
+           - st,stih410
+           - st,stih418
+-- 
+2.41.0
+
+From 254f70eed8ac670f16ac7f50705690671770e0e1 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Mon, 23 Jan 2023 21:58:54 +0100
+Subject: [PATCH 49/55] dt-bindings: serial: st: update asc bindings to Yaml
+
+Convert and update the st-asc.txt bindings file into Yaml format.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ .../devicetree/bindings/serial/st,asc.yaml    | 55 +++++++++++++++++++
+ .../devicetree/bindings/serial/st-asc.txt     | 18 ------
+ MAINTAINERS                                   |  1 +
+ 3 files changed, 56 insertions(+), 18 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/serial/st,asc.yaml
+ delete mode 100644 Documentation/devicetree/bindings/serial/st-asc.txt
+
+diff --git a/Documentation/devicetree/bindings/serial/st,asc.yaml b/Documentation/devicetree/bindings/serial/st,asc.yaml
+new file mode 100644
+index 000000000000..d80655edc20c
+--- /dev/null
++++ b/Documentation/devicetree/bindings/serial/st,asc.yaml
+@@ -0,0 +1,55 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/serial/st,asc.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++maintainers:
++  - Patrice Chotard <patrice.chotard@foss.st.com>
++
++title: STMicroelectronics ASC serial port
++
++allOf:
++  - $ref: /schemas/serial/serial.yaml#
++
++properties:
++  compatible:
++    const: st,asc
++
++  reg:
++    maxItems: 1
++
++  interrupts:
++    maxItems: 1
++
++  clocks:
++    maxItems: 1
++
++  st,force_m1:
++    description: force asc to be in Mode-1 recommended for high bit rates
++                 (above 19.2K)
++    $ref: /schemas/types.yaml#/definitions/flag
++
++  uart-has-rtscts: true
++
++required:
++  - compatible
++  - reg
++  - interrupts
++  - clocks
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++    #include <dt-bindings/clock/stih407-clks.h>
++    serial@9830000 {
++      compatible = "st,asc";
++      reg = <0x9830000 0x2c>;
++      interrupts = <GIC_SPI 122 IRQ_TYPE_LEVEL_HIGH>;
++      clocks = <&clk_s_c0_flexgen CLK_EXT2F_A9>;
++      status = "disabled";
++    };
++
++...
+diff --git a/Documentation/devicetree/bindings/serial/st-asc.txt b/Documentation/devicetree/bindings/serial/st-asc.txt
+deleted file mode 100644
+index 75d877f5968f..000000000000
+--- a/Documentation/devicetree/bindings/serial/st-asc.txt
++++ /dev/null
+@@ -1,18 +0,0 @@
+-*st-asc(Serial Port)
+-
+-Required properties:
+-- compatible : Should be "st,asc".
+-- reg, reg-names, interrupts, interrupt-names	: Standard way to define device
+-			resources with names. look in
+-			Documentation/devicetree/bindings/resource-names.txt
+-
+-Optional properties:
+-- st,hw-flow-ctrl	bool flag to enable hardware flow control.
+-- st,force-m1		bool flat to force asc to be in Mode-1 recommeded
+-			for high bit rates (above 19.2K)
+-Example:
+-serial@fe440000{
+-    compatible    = "st,asc";
+-    reg         = <0xfe440000 0x2c>;
+-    interrupts     =  <0 209 0>;
+-};
+diff --git a/MAINTAINERS b/MAINTAINERS
+index c16ce14c050b..ea900643bdb0 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -2736,6 +2736,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+ S:	Maintained
+ W:	http://www.stlinux.com
+ F:	Documentation/devicetree/bindings/i2c/st,sti-i2c.yaml
++F:	Documentation/devicetree/bindings/serial/st,asc.yaml
+ F:	Documentation/devicetree/bindings/spi/st,ssc-spi.yaml
+ F:	arch/arm/boot/dts/st/sti*
+ F:	arch/arm/mach-sti/
+-- 
+2.41.0
+
+From 7c1bdc76ee6b96bc9445cafbd26305bb3242b579 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Tue, 24 Jan 2023 21:11:13 +0100
+Subject: [PATCH 50/55] fixup! ARM: sti: removal of stih415/stih416 related
+ entries
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/mach-sti/Kconfig | 20 +-------------------
+ 1 file changed, 1 insertion(+), 19 deletions(-)
+
+diff --git a/arch/arm/mach-sti/Kconfig b/arch/arm/mach-sti/Kconfig
+index b3842c971d31..e58699e13e1a 100644
+--- a/arch/arm/mach-sti/Kconfig
++++ b/arch/arm/mach-sti/Kconfig
+@@ -19,31 +19,13 @@ menuconfig ARCH_STI
+ 	select PL310_ERRATA_769419 if CACHE_L2X0
+ 	select RESET_CONTROLLER
+ 	help
+-	  Include support for STMicroelectronics' STiH415/416, STiH407/10 and
++	  Include support for STMicroelectronics' STiH407/10 and
+ 	  STiH418 family SoCs using the Device Tree for discovery.  More
+ 	  information can be found in Documentation/arch/arm/sti/ and
+ 	  Documentation/devicetree.
+ 
+ if ARCH_STI
+ 
+-config SOC_STIH415
+-	bool "STiH415 STMicroelectronics Consumer Electronics family"
+-	default y
+-	help
+-	  This enables support for STMicroelectronics Digital Consumer
+-	  Electronics family StiH415 parts, primarily targeted at set-top-box
+-	  and other digital audio/video applications using Flattned Device
+-	  Trees.
+-
+-config SOC_STIH416
+-	bool "STiH416 STMicroelectronics Consumer Electronics family"
+-	default y
+-	help
+-	  This enables support for STMicroelectronics Digital Consumer
+-	  Electronics family StiH416 parts, primarily targeted at set-top-box
+-	  and other digital audio/video applications using Flattened Device
+-	  Trees.
+-
+ config SOC_STIH407
+ 	bool "STiH407 STMicroelectronics Consumer Electronics family"
+ 	default y
+-- 
+2.41.0
+
+From 07c96c781ab65dc41a961b608dad218e5f3d2536 Mon Sep 17 00:00:00 2001
+From: Jerome AUDU <jau@free.fr>
+Date: Fri, 14 Apr 2023 21:32:05 +0200
+Subject: [PATCH 51/55] rtlwifi: add protection before calling
+ {enable|disable}_interrupt()
+
+Detected on pcie/rtl8192ce embedded armv7/arm64 plaform
+Call to {enable|disable}_interrupt() seem not enought protected,
+so, add extra protection to avoid collision
+
+    Without this patch (randomly)
+    [  184.243426] rcu: INFO: rcu_sched self-detected stall on CPU
+    [  184.249008] rcu:     0-....: (8405 ticks this GP) idle=df74/1/0x40000002 softirq=3607/3607 fqs=2972
+    [  184.257790]  (t=8407 jiffies g=6613 q=56899 ncpus=4)
+    [  184.257803] CPU: 0 PID: 1059 Comm: ifconfig Not tainted 6.2.7 #3
+    [  184.257813] Hardware name: STi SoC with Flattened Device Tree
+    [  184.257818] PC is at pci_read32_sync+0x10/0x14 [rtl_pci]
+    [  184.257860] LR is at rtl92ce_enable_interrupt+0x4c/0x8c [rtl8192ce]
+    [  184.257921] pc : [<bf46d03c>]    lr : [<bf478e44>]    psr: 20060013
+    [  184.257928] sp : f1375ce0  ip : bf451b34  fp : c14f3c00
+    [  184.257933] r10: c2c4b780  r9 : c28f4000  r8 : c15b18bc
+    [  184.257938] r7 : 00000000  r6 : c15bd880  r5 : c15bc880  r4 : c15b1880
+    [  184.257944] r3 : f09e8000  r2 : 00000730  r1 : f09e8120  r0 : 00001b5f
+    [  184.257950] Flags: nzCv  IRQs on  FIQs on  Mode SVC_32  ISA ARM  Segment none
+    [  184.257959] Control: 10c5387d  Table: 86c0804a  DAC: 00000051
+    [  184.257970]  pci_read32_sync [rtl_pci] from rtl92ce_enable_interrupt+0x4c/0x8c [rtl8192ce]
+    [  184.258018]  rtl92ce_enable_interrupt [rtl8192ce] from rtl_pci_start+0xbc/0x18c [rtl_pci]
+    [  184.258059]  rtl_pci_start [rtl_pci] from rtl_op_start+0x58/0x7c [rtlwifi]
+    [  184.258269]  rtl_op_start [rtlwifi] from drv_start+0x4c/0x10c [mac80211]
+    [  184.259512]  drv_start [mac80211] from ieee80211_do_open+0x370/0x6d8 [mac80211]
+    [  184.260444]  ieee80211_do_open [mac80211] from ieee80211_open+0x60/0x84 [mac80211]
+    [  184.261374]  ieee80211_open [mac80211] from __dev_open+0xfc/0x1d0
+    [  184.261860]  __dev_open from __dev_change_flags+0x190/0x214
+    [  184.261878]  __dev_change_flags from dev_change_flags+0x20/0x5c
+    [  184.261894]  dev_change_flags from devinet_ioctl+0x7a8/0x7dc
+    [  184.261918]  devinet_ioctl from inet_ioctl+0x1a4/0x244
+    [  184.261937]  inet_ioctl from sock_ioctl+0x4dc/0x5b8
+    [  184.261962]  sock_ioctl from sys_ioctl+0x510/0xbd8
+    [  184.261985]  sys_ioctl from ret_fast_syscall+0x0/0x1c
+
+this can be reproduced using NetworkManager
+or with this simple script: (~1-2min to deadlock)
+$ while : ; do ifconfig wlan0 up; ifconfig wlan0 done; echo -n "."; done'
+
+Signed-off-by: Jerome AUDU <jau@free.fr>
+---
+ drivers/net/wireless/realtek/rtlwifi/core.c | 18 +++++++++++++++++-
+ drivers/net/wireless/realtek/rtlwifi/pci.c  |  5 +++++
+ drivers/net/wireless/realtek/rtlwifi/ps.c   |  3 +++
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/realtek/rtlwifi/core.c b/drivers/net/wireless/realtek/rtlwifi/core.c
+index 4fb16f5f6f83..aabaa81d591d 100644
+--- a/drivers/net/wireless/realtek/rtlwifi/core.c
++++ b/drivers/net/wireless/realtek/rtlwifi/core.c
+@@ -212,6 +212,7 @@ static int rtl_op_add_interface(struct ieee80211_hw *hw,
+ {
+ 	struct rtl_priv *rtlpriv = rtl_priv(hw);
+ 	struct rtl_mac *mac = rtl_mac(rtl_priv(hw));
++	unsigned long flags;
+ 	int err = 0;
+ 	u8 retry_limit = 0x30;
+ 
+@@ -235,8 +236,10 @@ static int rtl_op_add_interface(struct ieee80211_hw *hw,
+ 			rtl_dbg(rtlpriv, COMP_MAC80211, DBG_LOUD,
+ 				"NL80211_IFTYPE_STATION\n");
+ 			mac->beacon_enabled = 0;
++			spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 			rtlpriv->cfg->ops->update_interrupt_mask(hw, 0,
+ 					rtlpriv->cfg->maps[RTL_IBSS_INT_MASKS]);
++			spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 		}
+ 		break;
+ 	case NL80211_IFTYPE_ADHOC:
+@@ -244,7 +247,9 @@ static int rtl_op_add_interface(struct ieee80211_hw *hw,
+ 			"NL80211_IFTYPE_ADHOC\n");
+ 
+ 		mac->link_state = MAC80211_LINKED;
++		spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 		rtlpriv->cfg->ops->set_bcn_reg(hw);
++		spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 		if (rtlpriv->rtlhal.current_bandtype == BAND_ON_2_4G)
+ 			mac->basic_rates = 0xfff;
+ 		else
+@@ -262,7 +267,9 @@ static int rtl_op_add_interface(struct ieee80211_hw *hw,
+ 			"NL80211_IFTYPE_AP\n");
+ 
+ 		mac->link_state = MAC80211_LINKED;
++		spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 		rtlpriv->cfg->ops->set_bcn_reg(hw);
++		spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 		if (rtlpriv->rtlhal.current_bandtype == BAND_ON_2_4G)
+ 			mac->basic_rates = 0xfff;
+ 		else
+@@ -321,6 +328,7 @@ static void rtl_op_remove_interface(struct ieee80211_hw *hw,
+ {
+ 	struct rtl_priv *rtlpriv = rtl_priv(hw);
+ 	struct rtl_mac *mac = rtl_mac(rtl_priv(hw));
++	unsigned long flags;
+ 
+ 	mutex_lock(&rtlpriv->locks.conf_mutex);
+ 
+@@ -330,8 +338,10 @@ static void rtl_op_remove_interface(struct ieee80211_hw *hw,
+ 	    vif->type == NL80211_IFTYPE_MESH_POINT) {
+ 		if (mac->beacon_enabled == 1) {
+ 			mac->beacon_enabled = 0;
++			spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 			rtlpriv->cfg->ops->update_interrupt_mask(hw, 0,
+ 					rtlpriv->cfg->maps[RTL_IBSS_INT_MASKS]);
++			spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 		}
+ 	}
+ 
+@@ -1047,6 +1057,7 @@ static void rtl_op_bss_info_changed(struct ieee80211_hw *hw,
+ 	struct rtl_hal *rtlhal = rtl_hal(rtlpriv);
+ 	struct rtl_mac *mac = rtl_mac(rtl_priv(hw));
+ 	struct rtl_ps_ctl *ppsc = rtl_psc(rtl_priv(hw));
++	unsigned long flags;
+ 
+ 	mutex_lock(&rtlpriv->locks.conf_mutex);
+ 	if (vif->type == NL80211_IFTYPE_ADHOC ||
+@@ -1062,10 +1073,11 @@ static void rtl_op_bss_info_changed(struct ieee80211_hw *hw,
+ 				/*start hw beacon interrupt. */
+ 				/*rtlpriv->cfg->ops->set_bcn_reg(hw); */
+ 				mac->beacon_enabled = 1;
++				spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 				rtlpriv->cfg->ops->update_interrupt_mask(hw,
+ 						rtlpriv->cfg->maps
+ 						[RTL_IBSS_INT_MASKS], 0);
+-
++				spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 				if (rtlpriv->cfg->ops->linked_set_reg)
+ 					rtlpriv->cfg->ops->linked_set_reg(hw);
+ 				send_beacon_frame(hw, vif);
+@@ -1078,16 +1090,20 @@ static void rtl_op_bss_info_changed(struct ieee80211_hw *hw,
+ 					"ADHOC DISABLE BEACON\n");
+ 
+ 				mac->beacon_enabled = 0;
++				spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 				rtlpriv->cfg->ops->update_interrupt_mask(hw, 0,
+ 						rtlpriv->cfg->maps
+ 						[RTL_IBSS_INT_MASKS]);
++				spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 			}
+ 		}
+ 		if (changed & BSS_CHANGED_BEACON_INT) {
+ 			rtl_dbg(rtlpriv, COMP_BEACON, DBG_TRACE,
+ 				"BSS_CHANGED_BEACON_INT\n");
+ 			mac->beacon_interval = bss_conf->beacon_int;
++			spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 			rtlpriv->cfg->ops->set_bcn_intv(hw);
++			spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 		}
+ 	}
+ 
+diff --git a/drivers/net/wireless/realtek/rtlwifi/pci.c b/drivers/net/wireless/realtek/rtlwifi/pci.c
+index 9886e719739b..2e7e5415f8e2 100644
+--- a/drivers/net/wireless/realtek/rtlwifi/pci.c
++++ b/drivers/net/wireless/realtek/rtlwifi/pci.c
+@@ -1763,6 +1763,7 @@ static int rtl_pci_start(struct ieee80211_hw *hw)
+ 	struct rtl_ps_ctl *ppsc = rtl_psc(rtl_priv(hw));
+ 	struct rtl_mac *rtlmac = rtl_mac(rtl_priv(hw));
+ 	struct rtl_btc_ops *btc_ops = rtlpriv->btcoexist.btc_ops;
++	unsigned long flags;
+ 
+ 	int err;
+ 
+@@ -1789,7 +1790,9 @@ static int rtl_pci_start(struct ieee80211_hw *hw)
+ 	rtlpriv->cfg->ops->set_hw_reg(hw, HW_VAR_RETRY_LIMIT,
+ 			&rtlmac->retry_long);
+ 
++	spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 	rtlpriv->cfg->ops->enable_interrupt(hw);
++	spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 	rtl_dbg(rtlpriv, COMP_INIT, DBG_LOUD, "enable_interrupt OK\n");
+ 
+ 	rtl_init_rx_config(hw);
+@@ -1826,7 +1829,9 @@ static void rtl_pci_stop(struct ieee80211_hw *hw)
+ 	set_hal_stop(rtlhal);
+ 
+ 	rtlpci->driver_is_goingto_unload = true;
++	spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 	rtlpriv->cfg->ops->disable_interrupt(hw);
++	spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 	cancel_work_sync(&rtlpriv->works.lps_change_work);
+ 
+ 	spin_lock_irqsave(&rtlpriv->locks.rf_ps_lock, flags);
+diff --git a/drivers/net/wireless/realtek/rtlwifi/ps.c b/drivers/net/wireless/realtek/rtlwifi/ps.c
+index 629c03271bde..e58486e4b1d0 100644
+--- a/drivers/net/wireless/realtek/rtlwifi/ps.c
++++ b/drivers/net/wireless/realtek/rtlwifi/ps.c
+@@ -13,6 +13,7 @@ bool rtl_ps_enable_nic(struct ieee80211_hw *hw)
+ 	struct rtl_ps_ctl *ppsc = rtl_psc(rtl_priv(hw));
+ 	struct rtl_hal *rtlhal = rtl_hal(rtl_priv(hw));
+ 	struct rtl_mac *rtlmac = rtl_mac(rtl_priv(hw));
++        unsigned long flags;
+ 
+ 	/*<1> reset trx ring */
+ 	if (rtlhal->interface == INTF_PCI)
+@@ -35,7 +36,9 @@ bool rtl_ps_enable_nic(struct ieee80211_hw *hw)
+ 			cfg80211_get_chandef_type(&hw->conf.chandef));
+ 
+ 	/*<3> Enable Interrupt */
++        spin_lock_irqsave(&rtlpriv->locks.irq_th_lock, flags);
+ 	rtlpriv->cfg->ops->enable_interrupt(hw);
++        spin_unlock_irqrestore(&rtlpriv->locks.irq_th_lock, flags);
+ 
+ 	/*<enable timer> */
+ 	rtl_watch_dog_timer_callback(&rtlpriv->works.watchdog_timer);
+-- 
+2.41.0
+
+From 063a4901ea27fd06535864f4e356d0ded79c8e3b Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Mon, 24 Jul 2023 13:46:47 +0200
+Subject: [PATCH 52/55] ARM: dts: stih418-b2264: enable uart1
+
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 2 +-
+ arch/arm/boot/dts/st/stih418-b2264.dts   | 5 +++++
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index af8d82bd99d4..8d8a5848f55d 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -351,7 +351,7 @@ sbc_serial0: serial@9530000 {
+ 			status = "disabled";
+ 		};
+ 
+-		serial@9531000 {
++		sbc_serial1: serial@9531000 {
+ 			compatible = "st,asc";
+ 			reg = <0x9531000 0x2c>;
+ 			interrupts = <GIC_SPI 139 IRQ_TYPE_LEVEL_HIGH>;
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 0e65759afea6..6c2b33154acd 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -66,6 +66,7 @@ opp03 {
+ 
+ 	aliases {
+ 		ttyAS0 = &sbc_serial0;
++		ttyAS1 = &sbc_serial1;
+ 		ethernet0 = &ethernet0;
+ 	};
+ 
+@@ -169,6 +170,10 @@ &sbc_serial0 {
+ 	status = "okay";
+ };
+ 
++&sbc_serial1 {
++	status = "okay";
++};
++
+ &spifsm {
+ 	status = "okay";
+ 	partitions {
+-- 
+2.41.0
+
+From e3f2fddbfd56cdcff17638f5f227d2f22780c034 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Wed, 10 May 2023 21:19:36 +0200
+Subject: [PATCH 53/55] drivers: regulator: add vsense voltage regulator driver
+
+This is the voltage regulator driver to manage the vsense inside the ST flash
+sub-system that is used for configuring MMC, NAND, SPI voltages.
+
+Signed-off-by: JGiuseppe Cavallaro <peppe.cavallaro@st.com>
+---
+ .../bindings/regulator/st-flashss.txt         |  24 ++
+ drivers/regulator/Kconfig                     |   8 +
+ drivers/regulator/Makefile                    |   1 +
+ drivers/regulator/st-flashss.c                | 251 ++++++++++++++++++
+ 4 files changed, 284 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/regulator/st-flashss.txt
+ create mode 100644 drivers/regulator/st-flashss.c
+
+diff --git a/Documentation/devicetree/bindings/regulator/st-flashss.txt b/Documentation/devicetree/bindings/regulator/st-flashss.txt
+new file mode 100644
+index 000000000000..6bb622d04c90
+--- /dev/null
++++ b/Documentation/devicetree/bindings/regulator/st-flashss.txt
+@@ -0,0 +1,24 @@
++ST Voltage regulator for FlashSS vsense
++
++This is the voltage regulator driver to manage the vsense inside the ST flash
++sub-system that is used for configuring MMC, NAND, SPI voltages.
++
++Required properties:
++- compatible: can be "st,vmmc", "st,vnand" or "st,vspi" because it is shared
++  among these devices inside the ST FlashSS. Currently it is only tested on
++  MMC.
++
++Required properties:
++- regulator-name: regulator name.
++- reg: is the vsense top config base address in the flashSS hardware.
++
++Any property defined as part of the core regulator
++binding, defined in regulator.txt, can also be used.
++
++Example:
++
++vmmc_reg: voltage-regulator {
++	compatible = "st,vmmc";
++	regulator-name = "vmmc0";
++	reg = <0x9061004 0x4>;
++};
+diff --git a/drivers/regulator/Kconfig b/drivers/regulator/Kconfig
+index 823f8e6e4801..52c560afe276 100644
+--- a/drivers/regulator/Kconfig
++++ b/drivers/regulator/Kconfig
+@@ -1290,6 +1290,14 @@ config REGULATOR_SM5703
+ 	  This driver provides support for voltage regulators of SM5703
+ 	  multi-function device.
+ 
++config REGULATOR_ST_FLASHSS
++	tristate "STMicroelectronics FlashSS regulator"
++	depends on ARCH_STI && OF
++	help
++	  This driver provides support for the voltage regulators available
++	  inside the FlashSS embedded in some ST SoCs:
++	  e.g. STiH407/STiH410/STiH418 and STi8416.
++
+ config REGULATOR_STM32_BOOSTER
+ 	tristate "STMicroelectronics STM32 BOOSTER"
+ 	depends on ARCH_STM32 || COMPILE_TEST
+diff --git a/drivers/regulator/Makefile b/drivers/regulator/Makefile
+index 15e0d614ff66..a1e2c6413ef8 100644
+--- a/drivers/regulator/Makefile
++++ b/drivers/regulator/Makefile
+@@ -152,6 +152,7 @@ obj-$(CONFIG_REGULATOR_SC2731) += sc2731-regulator.o
+ obj-$(CONFIG_REGULATOR_SKY81452) += sky81452-regulator.o
+ obj-$(CONFIG_REGULATOR_SLG51000) += slg51000-regulator.o
+ obj-$(CONFIG_REGULATOR_SM5703) += sm5703-regulator.o
++obj-$(CONFIG_REGULATOR_ST_FLASHSS) += st-flashss.o
+ obj-$(CONFIG_REGULATOR_STM32_BOOSTER) += stm32-booster.o
+ obj-$(CONFIG_REGULATOR_STM32_VREFBUF) += stm32-vrefbuf.o
+ obj-$(CONFIG_REGULATOR_STM32_PWR) += stm32-pwr.o
+diff --git a/drivers/regulator/st-flashss.c b/drivers/regulator/st-flashss.c
+new file mode 100644
+index 000000000000..7f193fc1f4d2
+--- /dev/null
++++ b/drivers/regulator/st-flashss.c
+@@ -0,0 +1,251 @@
++/*
++ * ST regulator driver for flashSS vsense
++ *
++ * This is a small driver to manage the voltage regulator inside the ST flash
++ * sub-system that is used for configuring MMC, NAND, SPI voltages.
++ *
++ * Copyright(C) 2014 STMicroelectronics Ltd
++ * Author: Giuseppe Cavallaro <peppe.cavallaro@st.com>
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under  the terms of the GNU General  Public License as published by the
++ * Free Software Foundation;  either version 2 of the License, or (at your
++ * option) any later version.
++ */
++#include <linux/module.h>
++#include <linux/io.h>
++#include <linux/of.h>
++#include <linux/of_device.h>
++#include <linux/platform_device.h>
++#include <linux/regulator/driver.h>
++#include <linux/regulator/machine.h>
++#include <linux/regulator/of_regulator.h>
++
++/* FlashSS voltage VSENSE TOP CONFIG register defines */
++#define TOP_VSENSE_CONFIG_REG_PSW_EMMC		BIT(0)
++#define TOP_VSENSE_CONFIG_ENB_REG_PSW_EMMC	BIT(1)
++#define TOP_VSENSE_CONFIG_REG_PSW_NAND		BIT(8)
++#define TOP_VSENSE_CONFIG_ENB_REG_PSW_NAND	BIT(9)
++#define TOP_VSENSE_CONFIG_REG_PSW_SPI		BIT(16)
++#define TOP_VSENSE_CONFIG_ENB_REG_PSW_SPI	BIT(17)
++#define TOP_VSENSE_CONFIG_LATCHED_PSW_EMMC	BIT(24)
++#define TOP_VSENSE_CONFIG_LATCHED_PSW_NAND	BIT(25)
++#define TOP_VSENSE_CONFIG_LATCHED_PSW_SPI	BIT(26)
++
++struct st_vsense {
++	char *name;
++	struct device *dev;
++	u8 n_voltages;			/* number of supported voltages */
++	void __iomem *ioaddr;		/* TOP config base address */
++	unsigned int en_psw_mask;	/* Mask/enable vdd for each device */
++	unsigned int psw_mask;		/* Power sel mask for VDD */
++	unsigned int latched_mask;	/* Latched mask for VDD */
++};
++
++static const unsigned int st_type_voltages[] = {
++	1800000,
++	3300000,
++};
++
++const struct st_vsense st_vsense_data[] = {
++	{
++		.en_psw_mask = TOP_VSENSE_CONFIG_ENB_REG_PSW_EMMC,
++		.psw_mask = TOP_VSENSE_CONFIG_REG_PSW_EMMC,
++		.latched_mask = TOP_VSENSE_CONFIG_LATCHED_PSW_EMMC,
++	}, {
++		.en_psw_mask = TOP_VSENSE_CONFIG_ENB_REG_PSW_NAND,
++		.psw_mask = TOP_VSENSE_CONFIG_REG_PSW_NAND,
++		.latched_mask = TOP_VSENSE_CONFIG_LATCHED_PSW_NAND,
++	}, {
++		.en_psw_mask = TOP_VSENSE_CONFIG_ENB_REG_PSW_SPI,
++		.psw_mask = TOP_VSENSE_CONFIG_REG_PSW_SPI,
++		.latched_mask = TOP_VSENSE_CONFIG_LATCHED_PSW_SPI,
++	},
++};
++
++/* Get the value of Sensed-PSW of eMMC/NAND/SPI Pads */
++static int st_get_voltage_sel(struct regulator_dev *dev)
++{
++	struct st_vsense *vsense = rdev_get_drvdata(dev);
++	void __iomem *ioaddr = vsense->ioaddr;
++	int sel = 0;
++	u32 value = readl_relaxed(ioaddr);
++
++	if (value & vsense->latched_mask)
++		sel = 1;
++
++	dev_dbg(vsense->dev, "%s, selection %d (0x%08x)\n", vsense->name, sel,
++		readl_relaxed(ioaddr));
++
++	return sel;
++}
++
++static int st_set_voltage_sel(struct regulator_dev *dev, unsigned int selector)
++{
++	struct st_vsense *vsense = rdev_get_drvdata(dev);
++	void __iomem *ioaddr = vsense->ioaddr;
++	unsigned value = readl_relaxed(ioaddr);
++	unsigned int voltage;
++
++	voltage = st_type_voltages[selector];
++
++	value |= vsense->en_psw_mask;
++	if (voltage == 3300000)
++		value |= vsense->psw_mask;
++	else
++		value &= ~vsense->psw_mask;
++
++	writel_relaxed(value, ioaddr);
++
++	dev_dbg(vsense->dev, "%s, required voltage %d (vsense_conf 0x%08x)\n",
++		vsense->name, voltage,
++		readl_relaxed(ioaddr));
++
++	return 0;
++}
++
++static struct regulator_ops st_ops = {
++	.get_voltage_sel = st_get_voltage_sel,
++	.set_voltage_sel = st_set_voltage_sel,
++	.list_voltage = regulator_list_voltage_table,
++};
++
++static void st_get_satinize_powerup_voltage(struct st_vsense *vsense)
++{
++	void __iomem *ioaddr = vsense->ioaddr;
++	u32 value = readl_relaxed(ioaddr);
++
++	dev_dbg(vsense->dev, "Initial start-up value: (0x%08x)\n", value);
++
++	/* Sanitize voltage values forcing what is provided from start-up */
++	if (value & TOP_VSENSE_CONFIG_LATCHED_PSW_EMMC)
++		value |= TOP_VSENSE_CONFIG_REG_PSW_EMMC;
++	else
++		value &= ~TOP_VSENSE_CONFIG_REG_PSW_EMMC;
++
++	if (value & TOP_VSENSE_CONFIG_LATCHED_PSW_NAND)
++		value |= TOP_VSENSE_CONFIG_REG_PSW_NAND;
++	else
++		value &= ~TOP_VSENSE_CONFIG_REG_PSW_NAND;
++
++	if (value & TOP_VSENSE_CONFIG_LATCHED_PSW_SPI)
++		value |= TOP_VSENSE_CONFIG_REG_PSW_SPI;
++	else
++		value &= ~TOP_VSENSE_CONFIG_REG_PSW_SPI;
++
++	writel_relaxed(value, ioaddr);
++
++	dev_dbg(vsense->dev, "Sanitized value: (0x%08x)\n", value);
++}
++
++static const struct of_device_id __maybe_unused st_vsense_of_match[] = {
++	{.compatible = "st,vqmmc", .data = &st_vsense_data[0]},
++	{.compatible = "st,vnand", .data = &st_vsense_data[1]},
++	{.compatible = "st,vspi", .data = &st_vsense_data[2]},
++	{ /* end */ }
++};
++
++static int st_vsense_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	struct st_vsense *vsense;
++	const struct of_device_id *device;
++	struct resource *res;
++	struct regulator_desc *rdesc;
++	struct regulator_dev *rdev;
++	struct regulator_config config = { };
++	int ret;
++
++	vsense = devm_kzalloc(dev, sizeof(*vsense), GFP_KERNEL);
++	if (!vsense)
++		return -ENOMEM;
++
++	vsense->dev = dev;
++
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	vsense->ioaddr = devm_ioremap_resource(dev, res);
++	if (IS_ERR(vsense->ioaddr))
++		return PTR_ERR(vsense->ioaddr);
++
++	rdesc = devm_kzalloc(dev, sizeof(*rdesc), GFP_KERNEL);
++	if (!rdesc)
++		return -ENOMEM;
++
++	device = of_match_device(st_vsense_of_match, &pdev->dev);
++	if (!device)
++		return -ENODEV;
++
++	if (device->data) {
++		const struct st_vsense *data = device->data;
++		vsense->en_psw_mask = data->en_psw_mask;
++		vsense->psw_mask = data->psw_mask;
++		vsense->latched_mask = data->latched_mask;
++	} else
++		return -ENODEV;
++
++	if (of_property_read_string(np, "regulator-name",
++				    (const char **)&vsense->name))
++		return -EINVAL;
++
++	memset(rdesc, 0, sizeof(*rdesc));
++	rdesc->name = vsense->name;
++	rdesc->ops = &st_ops;
++	rdesc->type = REGULATOR_VOLTAGE;
++	rdesc->owner = THIS_MODULE;
++	rdesc->n_voltages = ARRAY_SIZE(st_type_voltages);
++	rdesc->volt_table = st_type_voltages;
++	config.dev = &pdev->dev;
++	config.driver_data = vsense;
++	config.of_node = np;
++
++	config.init_data = of_get_regulator_init_data(&pdev->dev, np, rdesc);
++	if (!config.init_data) {
++		dev_err(dev, "Failed to parse regulator init data\n");
++		return -ENOMEM;
++	}
++
++	/* register regulator */
++	rdev = devm_regulator_register(dev, rdesc, &config);
++	if (IS_ERR(rdev)) {
++		ret = PTR_ERR(rdev);
++		dev_err(dev, "register %s failed with error %d\n", rdesc->name, ret);
++		return ret;
++	}
++
++	platform_set_drvdata(pdev, rdev);
++
++	dev_info(dev, "%s  vsense voltage regulator registered\n", rdesc->name);
++	st_get_satinize_powerup_voltage(vsense);
++
++	return 0;
++}
++
++static int st_vsense_resume(struct device *dev)
++{
++	struct regulator_dev *rdev = dev_get_drvdata(dev);
++	struct st_vsense *vsense = rdev_get_drvdata(rdev);
++
++	st_get_satinize_powerup_voltage(vsense);
++
++	return 0;
++}
++
++MODULE_DEVICE_TABLE(of, st_vsense_of_match);
++
++static DEFINE_SIMPLE_DEV_PM_OPS(st_vsense_pm_ops, NULL,
++						  st_vsense_resume);
++
++static struct platform_driver st_vsense_driver = {
++	.probe = st_vsense_probe,
++	.driver = {
++		   .name = "st-vsense",
++		   .of_match_table = st_vsense_of_match,
++		   .pm	= pm_sleep_ptr(&st_vsense_pm_ops),
++		   },
++};
++module_platform_driver(st_vsense_driver);
++
++MODULE_AUTHOR("Giuseppe Cavallaro <peppe.cavallaro@st.com>");
++MODULE_DESCRIPTION("ST voltage regulator driver for vsense flashSS");
++MODULE_LICENSE("GPL v2");
+-- 
+2.41.0
+
+From 6515682ff20e2c1db91a601f4a01ca5b8cbe9e30 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Wed, 10 May 2023 21:20:11 +0200
+Subject: [PATCH 54/55] ARM: dts: sti: enable vsense voltage regulator driver
+
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 11 +++++++++++
+ arch/arm/boot/dts/st/stih418-b2264.dts   |  4 ++++
+ arch/arm/boot/dts/st/stih418.dtsi        |  4 ++++
+ 3 files changed, 19 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index 8d8a5848f55d..600fc0d4f737 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -597,6 +597,16 @@ spi@9542000 {
+ 			status = "disabled";
+ 		};
+ 
++		vqmmc_reg: voltage-regulator {
++			compatible = "st,vqmmc";
++			status = "disabled";
++			regulator-name = "vqmmc0";
++			reg = <0x9061004 0x4>;
++			regulator-min-microvolt = <1800000>;
++			regulator-max-microvolt = <3300000>;
++			regulator-always-on;
++		};
++
+ 		mmc0: sdhci@9060000 {
+ 			compatible = "st,sdhci-stih407", "st,sdhci";
+ 			status = "disabled";
+@@ -610,6 +620,7 @@ mmc0: sdhci@9060000 {
+ 			clocks = <&clk_s_c0_flexgen CLK_MMC_0>,
+ 				 <&clk_s_c0_flexgen CLK_RX_ICN_HVA>;
+ 			bus-width = <8>;
++			vqmmc-supply = <&vqmmc_reg>;
+ 		};
+ 
+ 		mmc1: sdhci@9080000 {
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 6c2b33154acd..2765903a0279 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -145,6 +145,10 @@ phy_port1: port@9b2a000 {
+ 	};
+ };
+ 
++&vqmmc_reg {
++	status = "okay";
++};
++
+ &mmc0 {
+ 	status = "okay";
+ };
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index 8fb8b3af5e49..a1c325e3a6ee 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -136,6 +136,10 @@ ehci1: usb@9a83e00 {
+ 			phy-names = "usb";
+ 		};
+ 
++		vqmmc_reg: voltage-regulator {
++			reg = <0x9061804 0x4>;
++		};
++
+ 		mmc0: sdhci@9060000 {
+ 			assigned-clocks = <&clk_s_c0_flexgen CLK_MMC_0>;
+ 			assigned-clock-parents = <&clk_s_c0_pll1 0>;
+-- 
+2.41.0
+
+From c1aa00f53173638fc5fff7860b9f42f62e9cccdf Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Wed, 23 Aug 2023 14:58:20 +0200
+Subject: [PATCH 55/55] pinctrl: st: use dynamic allocation of GPIO base
+
+Since commit 502df79b860563d7 ("gpiolib: Warn on drivers still using static
+gpiobase allocation"), one or more warnings are printed during boot on
+systems where static allocation of GPIO base is used:
+
+[    0.022795] gpio gpiochip0: Static allocation of GPIO base is deprecated, use dynamic allocation.
+[    0.023098] st-pinctrl 961f080.pin-controller-sbc: PIO0 bank added.
+[    0.023174] gpio gpiochip1: Static allocation of GPIO base is deprecated, use dynamic allocation.
+[    0.023375] st-pinctrl 961f080.pin-controller-sbc: PIO1 bank added.
+[    0.023447] gpio gpiochip2: Static allocation of GPIO base is deprecated, use dynamic allocation.
+[    0.023637] st-pinctrl 961f080.pin-controller-sbc: PIO2 bank added.
+
+So let's follow the suggestion and use dynamic allocation.
+---
+ drivers/pinctrl/pinctrl-st.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/pinctrl/pinctrl-st.c b/drivers/pinctrl/pinctrl-st.c
+index c1f36b164ea5..ac170a75a236 100644
+--- a/drivers/pinctrl/pinctrl-st.c
++++ b/drivers/pinctrl/pinctrl-st.c
+@@ -1523,7 +1523,7 @@ static int st_gpiolib_register_bank(struct st_pinctrl *info,
+ 		return PTR_ERR(bank->base);
+ 
+ 	bank->gpio_chip = st_gpio_template;
+-	bank->gpio_chip.base = bank_num * ST_GPIO_PINS_PER_BANK;
++	bank->gpio_chip.base = -1;
+ 	bank->gpio_chip.ngpio = ST_GPIO_PINS_PER_BANK;
+ 	bank->gpio_chip.fwnode = of_fwnode_handle(np);
+ 	bank->gpio_chip.parent = dev;
+@@ -1533,7 +1533,7 @@ static int st_gpiolib_register_bank(struct st_pinctrl *info,
+ 	bank->gpio_chip.label = range->name;
+ 
+ 	range->id = bank_num;
+-	range->pin_base = range->base = range->id * ST_GPIO_PINS_PER_BANK;
++	range->pin_base = range->base = range->id * ST_GPIO_PINS_PER_BANK + 512;
+ 	range->npins = bank->gpio_chip.ngpio;
+ 	range->gc = &bank->gpio_chip;
+ 
+-- 
+2.41.0
+

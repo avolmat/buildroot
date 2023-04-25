@@ -1,0 +1,2359 @@
+From f4af53d02a011e97a05c5dfb042b90d02d0e4b8c Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:25 +0000
+Subject: [PATCH 01/17] drm/sti: add hdmi tx6g0c28 phy for STi platform
+
+Addition of the HDMI TX PHY driver for use in the STiH418
+SoC platform and more especially the 4KOpen (B2264) board.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/Makefile               |   1 +
+ drivers/gpu/drm/sti/sti_hdmi.c             |   4 +
+ drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.c | 292 +++++++++++++++++++++
+ drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.h |  13 +
+ 4 files changed, 310 insertions(+)
+ create mode 100644 drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.c
+ create mode 100644 drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.h
+
+diff --git a/drivers/gpu/drm/sti/Makefile b/drivers/gpu/drm/sti/Makefile
+index f203ac5514ae..bf52edb7dba5 100644
+--- a/drivers/gpu/drm/sti/Makefile
++++ b/drivers/gpu/drm/sti/Makefile
+@@ -11,6 +11,7 @@ sti-drm-y := \
+ 	sti_plane.o \
+ 	sti_hdmi.o \
+ 	sti_hdmi_tx3g4c28phy.o \
++	sti_hdmi_tx6g0c28phy.o \
+ 	sti_dvo.o \
+ 	sti_awg_utils.o \
+ 	sti_vtg.o \
+diff --git a/drivers/gpu/drm/sti/sti_hdmi.c b/drivers/gpu/drm/sti/sti_hdmi.c
+index dc1562f14ceb..54e6ce94f4d0 100644
+--- a/drivers/gpu/drm/sti/sti_hdmi.c
++++ b/drivers/gpu/drm/sti/sti_hdmi.c
+@@ -27,6 +27,7 @@
+ 
+ #include "sti_hdmi.h"
+ #include "sti_hdmi_tx3g4c28phy.h"
++#include "sti_hdmi_tx6g0c28phy.h"
+ #include "sti_vtg.h"
+ 
+ #define HDMI_CFG                        0x0000
+@@ -1363,6 +1364,9 @@ static const struct of_device_id hdmi_of_match[] = {
+ 	{
+ 		.compatible = "st,stih407-hdmi",
+ 		.data = &tx3g4c28phy_ops,
++	}, {
++		.compatible = "st,stih418-hdmi",
++		.data = &tx6g0c28phy_ops,
+ 	}, {
+ 		/* end node */
+ 	}
+diff --git a/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.c b/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.c
+new file mode 100644
+index 000000000000..7bd260429044
+--- /dev/null
++++ b/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.c
+@@ -0,0 +1,292 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Author: Alain Volmat <avolmat@me.com>
++ *
++ * This driver is highly inspired from sti_hdmi_tx3g4c28phy.c copyright by ST Microelectronics
++ * with IP behavior understood by looking at the display package from 4kopen.com
++ * https://bitbucket.org/4kopen/display/src/master/display/ip/hdmi/stmhdmitx6g0_c28_phy.cpp
++ */
++
++#include <drm/drm_device.h>
++#include <drm/drm_print.h>
++#include <linux/delay.h>
++#include <linux/reset.h>
++
++#include "sti_hdmi_tx6g0c28phy.h"
++
++#define HDMI_SRZ_CFG		0x504
++#define HDMI_SRZ_PWR_CFG	0x508
++#define HDMI_SRZ_PLL_CFG	0x510
++#define HDMI_SRZ_STR_1		0x518
++#define HDMI_SRZ_STR_2		0x51C
++#define HDMI_SRZ_CALCODE_EXT	0x530
++#define HDMI_SRZ_TX_RSVR_BITS	0x560
++
++/* ******************************* */
++/* register : HDMI_SRZ_CFG         */
++/* ******************************* */
++#define HDMI_SRZ_CFG_EN				BIT(0)
++#define HDMI_SRZ_CFG_EN_PE_C0_MASK		GENMASK(6, 4)
++#define HDMI_SRZ_CFG_EN_PE_C1_MASK		GENMASK(10, 8)
++#define HDMI_SRZ_CFG_EN_PE_C2_MASK		GENMASK(14, 12)
++
++#define HDMI_SRZ_CFG_EXTERNAL_DATA		BIT(16)
++#define HDMI_SRZ_CFG_RBIAS_EXT			BIT(17)
++#define HDMI_SRZ_CFG_EN_SINK_TERM_DETECTION	BIT(18)
++#define HDMI_SRZ_CFG_ISNKCTRL_MASK		GENMASK(21, 20)
++
++#define HDMI_SRZ_CFG_EN_SRC_TERM_SHIFT    (24)
++#define HDMI_SRZ_CFG_EN_SRC_TERM_VAL_0_165MHZ             (0x0)
++#define HDMI_SRZ_CFG_EN_SRC_TERM_VAL_165_340MHZ      (0x2)
++#define HDMI_SRZ_CFG_EN_SRC_TERM_VAL_ABV_340MHZ             (0x3)
++
++#define HDMI_SRZ_CFG_CKCH_LOWSW_EN_SHIFT          (29)
++#define HDMI_SRZ_CFG_CKCH_LOWSW_EN_VAL_500MV      (0x0) /* for below or equal 3.4 Gbps */
++#define HDMI_SRZ_CFG_CKCH_LOWSW_EN_VAL_300MV      (0x1) /* for above 3.4 Gbps */
++
++#define HDMI_SRZ_CFG_CKBY10_OR_40_SHIFT             (30)
++#define HDMI_SRZ_CFG_CKBY10_OR_40_VAL_DIV_BY_10     (0x0) /* for below or equal 3.4 Gbps */
++#define HDMI_SRZ_CFG_CKBY10_OR_40_VAL_DIV_BY_40     (0x1) /* for above 3.4 Gbps */
++
++#define HDMI_SRZ_CFG_DATA20BIT10BIT_SHIFT           (31)
++#define HDMI_SRZ_CFG_DATA20BIT10BIT_VAL_10_BPC      (0x0)
++#define HDMI_SRZ_CFG_DATA20BIT10BIT_VAL_20_BPC      (0x1)
++
++/* ******************************* */
++/* register : HDMI_SRZ_PLL_CFG     */
++/* ******************************* */
++#define HDMI_PLL_CFG_EN		BIT(0)
++#define HDMI_PLL_CFG_NDIV_SHIFT (8)
++#define HDMI_PLL_CFG_IDF_SHIFT  (16)
++#define HDMI_PLL_CFG_ODF_SHIFT  (24)
++
++#define ODF_DIV_1          (0)
++#define ODF_DIV_2          (1)
++#define ODF_DIV_4          (2)
++#define ODF_DIV_8          (3)
++#define ODF_DIV_16         (4)
++
++/* ******************************* */
++/* register : HDMI_SRZ_STR_1       */
++/* ******************************* */
++#define HDMI_SRZ_STR1_MSK_PEXC0   GENMASK(11, 0)
++#define HDMI_SRZ_STR1_MSK_PEXC1   GENMASK(27, 16)
++
++/* ******************************* */
++/* register : HDMI_SRZ_STR_2       */
++/* ******************************* */
++#define HDMI_SRZ_STR2_PEXC2       (0)
++#define HDMI_SRZ_STR2_MSK_PEXC2   (0xFFF << HDMI_SRZ_STR2_PEXC2)
++
++/* ******************************* */
++/* register : HDMI_SRZ_CALCODE_EXT */
++/* ******************************* */
++#define HDMI_SRZ_CALCODE_EXT_MASK        GENMASK(27, 0)
++
++/* ******************************** */
++/* register : HDMI_SRZ_TX_RSVR_BITS */
++/* ******************************** */
++#define HDMI_SRZ_TX_RSVR_BITS_BELOW_340MHZ       (0)
++#define HDMI_SRZ_TX_RSVR_BITS_ABOVE_340MHZ       (0x0800000)
++
++/* *********************************** */
++/* Configuration                       */
++/* *********************************** */
++/* Config 0 => HDMI_SRZ_CFG */
++#define HDMI_SRZ_CONFIG_0_MASK  (HDMI_SRZ_CFG_EN_PE_C0_MASK | \
++				 HDMI_SRZ_CFG_EN_PE_C1_MASK | \
++				 HDMI_SRZ_CFG_EN_PE_C2_MASK | \
++				 HDMI_SRZ_CFG_ISNKCTRL_MASK)
++/* Config 1 => HDMI_SRZ_STR_1 */
++#define HDMI_SRZ_CONFIG_1_MASK  (HDMI_SRZ_STR1_MSK_PEXC0 | HDMI_SRZ_STR1_MSK_PEXC1)
++
++/* Config 2 => HDMI_SRZ_STR_2 */
++#define HDMI_SRZ_CONFIG_2_MASK  (HDMI_SRZ_STR2_MSK_PEXC2)
++
++/* Config 3 => HDMI_SRZ_CALCODE_EXT */
++#define HDMI_SRZ_CONFIG_3_MASK  (HDMI_SRZ_CALCODE_EXT_MASK)
++
++#define STM_HDMI_THOLD_CLK_600MHZ  (600000000)
++#define STM_HDMI_THOLD_CLK_340MHZ  (340000000)
++#define STM_HDMI_THOLD_CLK_165MHZ  (165000000)
++
++#define HDMI_TIMEOUT_PLL_LOCK  50  /*milliseconds */
++
++struct plldividers_s {
++	u32 min;
++	u32 max;
++	u32 idf;
++	u32 odf;
++};
++
++/*
++ * Functional specification recommended values
++ */
++static struct plldividers_s plldividers[] = {
++	{0, 37500000, 1, ODF_DIV_16 },
++	{37500000, 75000000, 2, ODF_DIV_8 },
++	{75000000, 150000000, 4, ODF_DIV_4 },
++	{150000000, 300000000, 8, ODF_DIV_2 },
++	{300000000, 600000000, 16, ODF_DIV_1 }
++};
++
++static struct hdmi_phy_config hdmiphy_config[] = {
++	{0, 145000000, {0x0, 0x0, 0x0, 0x0} },
++	{145000000, 165000000, {0x1110, 0x0, 0x0, 0x0} },
++	{165000000, 340000000, {0x1110, 0x30003, 0x3, 0x0} },
++	{340000000, 600000000, {0x200000, 0x0, 0x0, 0x0} },
++};
++
++/**
++ * sti_hdmi_tx6g0c28phy_start - Start hdmi phy macro cell tx6g0c28
++ *
++ * @hdmi: pointer on the hdmi internal structure
++ *
++ * Return false if an error occur
++ */
++static bool sti_hdmi_tx6g0c28phy_start(struct sti_hdmi *hdmi)
++{
++	u32 ckpxpll = hdmi->mode.clock * 1000;
++	u32 cfg, val, tmdsck, idf, odf, pllctrl = 0;
++	bool foundplldivides = false;
++	u32 tx_rsvr_bits = HDMI_SRZ_TX_RSVR_BITS_BELOW_340MHZ;
++	int i;
++
++	drm_dbg_driver(hdmi->drm_dev, "%s: ckpxpll = %dHz\n", __func__, ckpxpll);
++
++	for (i = 0; i < ARRAY_SIZE(plldividers); i++) {
++		if (ckpxpll >= plldividers[i].min &&
++		    ckpxpll < plldividers[i].max) {
++			idf = plldividers[i].idf;
++			odf = plldividers[i].odf;
++			foundplldivides = true;
++			break;
++		}
++	}
++
++	if (!foundplldivides) {
++		dev_err(&hdmi->dev, "%s: input TMDS clock speed (%d) not supported\n",
++			__func__, ckpxpll);
++		return false;
++	}
++
++	/* Assuming no pixel repetition and 24bits color */
++	tmdsck = ckpxpll;
++	pllctrl |= 20 << HDMI_PLL_CFG_NDIV_SHIFT;
++
++	if (tmdsck > STM_HDMI_THOLD_CLK_600MHZ) {
++		dev_err(&hdmi->dev, "%s: output TMDS clock (%d) out of range\n", __func__, tmdsck);
++		return false;
++	}
++
++	pllctrl |= idf << HDMI_PLL_CFG_IDF_SHIFT;
++	pllctrl |= odf << HDMI_PLL_CFG_ODF_SHIFT;
++
++	cfg = (HDMI_SRZ_CFG_EN |
++	       HDMI_SRZ_CFG_EXTERNAL_DATA |
++	       HDMI_SRZ_CFG_RBIAS_EXT |
++	       HDMI_SRZ_CFG_EN_SINK_TERM_DETECTION |
++	       (HDMI_SRZ_CFG_DATA20BIT10BIT_VAL_10_BPC << HDMI_SRZ_CFG_DATA20BIT10BIT_SHIFT));
++
++	if (tmdsck > STM_HDMI_THOLD_CLK_340MHZ) {
++		cfg |= (HDMI_SRZ_CFG_EN_SRC_TERM_VAL_ABV_340MHZ << HDMI_SRZ_CFG_EN_SRC_TERM_SHIFT) |
++		       (HDMI_SRZ_CFG_CKCH_LOWSW_EN_VAL_300MV << HDMI_SRZ_CFG_CKCH_LOWSW_EN_SHIFT) |
++		       (HDMI_SRZ_CFG_CKBY10_OR_40_VAL_DIV_BY_40 << HDMI_SRZ_CFG_CKBY10_OR_40_SHIFT);
++		tx_rsvr_bits = HDMI_SRZ_TX_RSVR_BITS_ABOVE_340MHZ;
++	} else if (tmdsck > STM_HDMI_THOLD_CLK_165MHZ) {
++		cfg |= (HDMI_SRZ_CFG_EN_SRC_TERM_VAL_165_340MHZ << HDMI_SRZ_CFG_EN_SRC_TERM_SHIFT) |
++		       (HDMI_SRZ_CFG_CKCH_LOWSW_EN_VAL_500MV << HDMI_SRZ_CFG_CKCH_LOWSW_EN_SHIFT) |
++		       (HDMI_SRZ_CFG_CKBY10_OR_40_VAL_DIV_BY_10 << HDMI_SRZ_CFG_CKBY10_OR_40_SHIFT);
++	} else {
++		cfg |= (HDMI_SRZ_CFG_EN_SRC_TERM_VAL_0_165MHZ << HDMI_SRZ_CFG_EN_SRC_TERM_SHIFT) |
++		       (HDMI_SRZ_CFG_CKCH_LOWSW_EN_VAL_500MV << HDMI_SRZ_CFG_CKCH_LOWSW_EN_SHIFT) |
++		       (HDMI_SRZ_CFG_CKBY10_OR_40_VAL_DIV_BY_10 << HDMI_SRZ_CFG_CKBY10_OR_40_SHIFT);
++	}
++
++	/*
++	 * To configure the source termination and pre-emphasis appropriately
++	 * for different high speed TMDS clock frequencies a phy configuration
++	 * table must be provided, tailored to the SoC and board combination.
++	 */
++	for (i = 0; i < ARRAY_SIZE(hdmiphy_config); i++) {
++		if (hdmiphy_config[i].min_tmds_freq <= tmdsck &&
++		    hdmiphy_config[i].max_tmds_freq >= tmdsck) {
++			cfg |= (hdmiphy_config[i].config[0] & HDMI_SRZ_CONFIG_0_MASK);
++			hdmi_write(hdmi, cfg, HDMI_SRZ_CFG);
++			hdmi_write(hdmi, 0, HDMI_SRZ_PWR_CFG);
++
++			val = hdmiphy_config[i].config[1] & HDMI_SRZ_CONFIG_1_MASK;
++			hdmi_write(hdmi, val, HDMI_SRZ_STR_1);
++
++			val = hdmiphy_config[i].config[2] & HDMI_SRZ_CONFIG_2_MASK;
++			hdmi_write(hdmi, val, HDMI_SRZ_STR_2);
++
++			val = hdmiphy_config[i].config[3] & HDMI_SRZ_CONFIG_3_MASK;
++			hdmi_write(hdmi, val, HDMI_SRZ_CALCODE_EXT);
++
++			hdmi_write(hdmi, tx_rsvr_bits, HDMI_SRZ_TX_RSVR_BITS);
++
++			/*
++			 * Configure and power up the PHY PLL
++			 */
++			hdmi->event_received = false;
++			hdmi_write(hdmi, (pllctrl | HDMI_PLL_CFG_EN), HDMI_SRZ_PLL_CFG);
++
++			/* wait PLL interrupt */
++			wait_event_interruptible_timeout(hdmi->wait_event, hdmi->event_received,
++							 msecs_to_jiffies(HDMI_TIMEOUT_PLL_LOCK));
++
++			if ((hdmi_read(hdmi, HDMI_STA) & HDMI_STA_DLL_LCK) == 0) {
++				dev_err(&hdmi->dev, "%s: hdmi phy pll not locked\n", __func__);
++				return false;
++			}
++
++			/* Reset the HDMI_TX_PHY */
++			reset_control_assert(hdmi->reset);
++			usleep_range(15, 20);
++			reset_control_deassert(hdmi->reset);
++
++			return true;
++		}
++	}
++
++	/*
++	 * Default, power up the serializer with no pre-emphasis or
++	 * output swing correction
++	 */
++	hdmi_write(hdmi, cfg, HDMI_SRZ_CFG);
++	hdmi_write(hdmi, 0, HDMI_SRZ_PWR_CFG);
++	hdmi_write(hdmi, 0, HDMI_SRZ_STR_1);
++	hdmi_write(hdmi, 0, HDMI_SRZ_STR_2);
++	hdmi_write(hdmi, 0, HDMI_SRZ_CALCODE_EXT);
++	hdmi_write(hdmi, 0, HDMI_SRZ_TX_RSVR_BITS);
++
++	return true;
++}
++
++/**
++ * sti_hdmi_tx6g0c28phy_stop - Stop hdmi phy macro cell tx6g0c28
++ *
++ * @hdmi: pointer on the hdmi internal structure
++ */
++static void sti_hdmi_tx6g0c28phy_stop(struct sti_hdmi *hdmi)
++{
++	hdmi->event_received = false;
++
++	hdmi_write(hdmi, HDMI_SRZ_CFG_EN_SINK_TERM_DETECTION, HDMI_SRZ_CFG);
++	hdmi_write(hdmi, 0, HDMI_SRZ_PLL_CFG);
++
++	/* wait PLL interrupt */
++	wait_event_interruptible_timeout(hdmi->wait_event,
++					 hdmi->event_received,
++					 msecs_to_jiffies
++					 (HDMI_TIMEOUT_PLL_LOCK));
++
++	if (hdmi_read(hdmi, HDMI_STA) & HDMI_STA_DLL_LCK)
++		dev_err(&hdmi->dev, "%s: hdmi phy pll not well disabled\n", __func__);
++}
++
++struct hdmi_phy_ops tx6g0c28phy_ops = {
++	.start = sti_hdmi_tx6g0c28phy_start,
++	.stop = sti_hdmi_tx6g0c28phy_stop,
++};
+diff --git a/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.h b/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.h
+new file mode 100644
+index 000000000000..bcb8b70d36ea
+--- /dev/null
++++ b/drivers/gpu/drm/sti/sti_hdmi_tx6g0c28phy.h
+@@ -0,0 +1,13 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Author: Alain Volmat <avolmat@me.com>
++ */
++
++#ifndef _STI_HDMI_TX6G0C28PHY_H_
++#define _STI_HDMI_TX6G0C28PHY_H_
++
++#include "sti_hdmi.h"
++
++extern struct hdmi_phy_ops tx6g0c28phy_ops;
++
++#endif
+-- 
+2.41.0
+
+From ad26d274ca8585de5e0ea5829d84a128762954a3 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:26 +0000
+Subject: [PATCH 02/17] dt-bindings: display: add st,stih418-vtg compatible for
+ sti vtg
+
+Add a new compatible in st,stih4xx.txt in order to support sti vtg on
+stih418 platforms.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ Documentation/devicetree/bindings/display/st,stih4xx.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/display/st,stih4xx.txt b/Documentation/devicetree/bindings/display/st,stih4xx.txt
+index 6778b3e7ad5b..5450e1db8b8d 100644
+--- a/Documentation/devicetree/bindings/display/st,stih4xx.txt
++++ b/Documentation/devicetree/bindings/display/st,stih4xx.txt
+@@ -2,7 +2,7 @@ STMicroelectronics stih4xx platforms
+ 
+ - sti-vtg: video timing generator
+   Required properties:
+-  - compatible: "st,vtg"
++  - compatible: "st,vtg" or "st,stih418-vtg"
+   - reg: Physical base address of the IP registers and length of memory mapped region.
+   Optional properties:
+   - interrupts : VTG interrupt number to the CPU.
+-- 
+2.41.0
+
+From 955498317fc434cb162444aef75fd74ac50f6eec Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:27 +0000
+Subject: [PATCH 03/17] drm/sti: add support for VTG on the stih418 platform
+
+VTG integrated into the STiH418 differ in the number of outputs
+available and allocation of each output.  Indeed on STiH418, there
+are 6 outputs (4 on the STiH407/STiH410) and HDMI is connected to
+the 5th output in case of STiH418 while it is on the 1st output
+in case of STiH407/STiH410.
+
+A new compatible st,stih418-vtg is added to differentiate that.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_vtg.c | 62 +++++++++++++++++++++++++++++------
+ 1 file changed, 52 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_vtg.c b/drivers/gpu/drm/sti/sti_vtg.c
+index 5e5f82b6a5d9..b0cab72ea502 100644
+--- a/drivers/gpu/drm/sti/sti_vtg.c
++++ b/drivers/gpu/drm/sti/sti_vtg.c
+@@ -60,6 +60,18 @@
+ #define VTG_TOP_V_HD_4      0x012c
+ #define VTG_BOT_V_HD_4      0x0130
+ 
++#define VTG_H_HD_5          0x0140
++#define VTG_TOP_V_VD_5      0x0144
++#define VTG_BOT_V_VD_5      0x0148
++#define VTG_TOP_V_HD_5      0x014c
++#define VTG_BOT_V_HD_5      0x0150
++
++#define VTG_H_HD_6          0x0160
++#define VTG_TOP_V_VD_6      0x0164
++#define VTG_BOT_V_VD_6      0x0168
++#define VTG_TOP_V_HD_6      0x016c
++#define VTG_BOT_V_HD_6      0x0170
++
+ #define VTG_IRQ_BOTTOM      BIT(0)
+ #define VTG_IRQ_TOP         BIT(1)
+ #define VTG_IRQ_MASK        (VTG_IRQ_TOP | VTG_IRQ_BOTTOM)
+@@ -92,7 +104,12 @@ struct sti_vtg_regs_offs {
+ 	u32 bot_v_hd;
+ };
+ 
+-#define VTG_MAX_SYNC_OUTPUT 4
++struct sti_vtg_data {
++	unsigned int nb_sync_output;
++	unsigned int hdmi_sync_id;
++};
++
++#define VTG_MAX_SYNC_OUTPUT 6
+ static const struct sti_vtg_regs_offs vtg_regs_offs[VTG_MAX_SYNC_OUTPUT] = {
+ 	{ VTG_H_HD_1,
+ 	  VTG_TOP_V_VD_1, VTG_BOT_V_VD_1, VTG_TOP_V_HD_1, VTG_BOT_V_HD_1 },
+@@ -101,7 +118,11 @@ static const struct sti_vtg_regs_offs vtg_regs_offs[VTG_MAX_SYNC_OUTPUT] = {
+ 	{ VTG_H_HD_3,
+ 	  VTG_TOP_V_VD_3, VTG_BOT_V_VD_3, VTG_TOP_V_HD_3, VTG_BOT_V_HD_3 },
+ 	{ VTG_H_HD_4,
+-	  VTG_TOP_V_VD_4, VTG_BOT_V_VD_4, VTG_TOP_V_HD_4, VTG_BOT_V_HD_4 }
++	  VTG_TOP_V_VD_4, VTG_BOT_V_VD_4, VTG_TOP_V_HD_4, VTG_BOT_V_HD_4 },
++	{ VTG_H_HD_5,
++	  VTG_TOP_V_VD_5, VTG_BOT_V_VD_5, VTG_TOP_V_HD_5, VTG_BOT_V_HD_5 },
++	{ VTG_H_HD_6,
++	  VTG_TOP_V_VD_6, VTG_BOT_V_VD_6, VTG_TOP_V_HD_6, VTG_BOT_V_HD_6 }
+ };
+ 
+ /*
+@@ -138,6 +159,7 @@ struct sti_vtg {
+ 	u32 irq_status;
+ 	struct raw_notifier_head notifier_list;
+ 	struct drm_crtc *crtc;
++	struct sti_vtg_data data;
+ };
+ 
+ struct sti_vtg *of_vtg_find(struct device_node *np)
+@@ -252,7 +274,7 @@ static void vtg_set_mode(struct sti_vtg *vtg,
+ 	vtg_set_output_window(vtg->regs, mode);
+ 
+ 	/* Set hsync and vsync position for HDMI */
+-	vtg_set_hsync_vsync_pos(&sync[VTG_SYNC_ID_HDMI - 1], HDMI_DELAY, mode);
++	vtg_set_hsync_vsync_pos(&sync[vtg->data.hdmi_sync_id - 1], HDMI_DELAY, mode);
+ 
+ 	/* Set hsync and vsync position for HD DCS */
+ 	vtg_set_hsync_vsync_pos(&sync[VTG_SYNC_ID_HDDCS - 1], 0, mode);
+@@ -264,7 +286,7 @@ static void vtg_set_mode(struct sti_vtg *vtg,
+ 	vtg_set_hsync_vsync_pos(&sync[VTG_SYNC_ID_DVO - 1], DVO_DELAY, mode);
+ 
+ 	/* Progam the syncs outputs */
+-	for (i = 0; i < VTG_MAX_SYNC_OUTPUT ; i++) {
++	for (i = 0; i < vtg->data.nb_sync_output ; i++) {
+ 		writel(sync[i].hsync,
+ 		       vtg->regs + vtg_regs_offs[i].h_hd);
+ 		writel(sync[i].vsync_line_top,
+@@ -376,9 +398,27 @@ static irqreturn_t vtg_irq(int irq, void *arg)
+ 	return IRQ_WAKE_THREAD;
+ }
+ 
++static const struct sti_vtg_data stih407_vtg_data = {
++	.nb_sync_output = 4,
++	.hdmi_sync_id = 1,
++};
++
++static const struct sti_vtg_data stih418_vtg_data = {
++	.nb_sync_output = 6,
++	.hdmi_sync_id = 5,
++};
++
++static const struct of_device_id vtg_of_match[] = {
++	{ .compatible = "st,vtg", .data = &stih407_vtg_data, },
++	{ .compatible = "st,stih418-vtg", .data = &stih418_vtg_data, },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, vtg_of_match);
++
+ static int vtg_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
+ 	struct sti_vtg *vtg;
+ 	struct resource *res;
+ 	int ret;
+@@ -387,6 +427,14 @@ static int vtg_probe(struct platform_device *pdev)
+ 	if (!vtg)
+ 		return -ENOMEM;
+ 
++	memcpy(&vtg->data, of_match_node(vtg_of_match, np)->data,
++	       sizeof(struct sti_vtg_data));
++
++	if (vtg->data.nb_sync_output > VTG_MAX_SYNC_OUTPUT) {
++		dev_err(dev, "Invalid number of VTG sync output\n");
++		return -EINVAL;
++	}
++
+ 	/* Get Memory ressources */
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!res) {
+@@ -422,12 +470,6 @@ static int vtg_probe(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-static const struct of_device_id vtg_of_match[] = {
+-	{ .compatible = "st,vtg", },
+-	{ /* sentinel */ }
+-};
+-MODULE_DEVICE_TABLE(of, vtg_of_match);
+-
+ struct platform_driver sti_vtg_driver = {
+ 	.driver = {
+ 		.name = "sti-vtg",
+-- 
+2.41.0
+
+From 2d49a01c8b049f5b6e8d8114ca80a418908b4f3d Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:28 +0000
+Subject: [PATCH 04/17] drm/sti: add STih418 platform support in sti mixer
+
+On the STiH418, since there are more planes attached to the
+mixer, the bit field for each depth of is now coded using 4 bits
+instead of 3 bits.  Some registers as well differ between STiH407
+and STiH418 leading on relying on the st,stih418-compositor compatible
+to distinguish proper behavior.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_mixer.c | 71 ++++++++++++++++++++++++++-------
+ 1 file changed, 57 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_mixer.c b/drivers/gpu/drm/sti/sti_mixer.c
+index 7e5f14646625..9cd780403d7b 100644
+--- a/drivers/gpu/drm/sti/sti_mixer.c
++++ b/drivers/gpu/drm/sti/sti_mixer.c
+@@ -7,6 +7,7 @@
+  */
+ 
+ #include <linux/moduleparam.h>
++#include <linux/of.h>
+ #include <linux/seq_file.h>
+ 
+ #include <drm/drm_print.h>
+@@ -23,10 +24,12 @@ module_param_named(bkgcolor, bkg_color, int, 0644);
+ /* regs offset */
+ #define GAM_MIXER_CTL      0x00
+ #define GAM_MIXER_BKC      0x04
++#define GAM_MIXER_OFF	   0x08 /* Only for STiH418 */
+ #define GAM_MIXER_BCO      0x0C
+ #define GAM_MIXER_BCS      0x10
+ #define GAM_MIXER_AVO      0x28
+ #define GAM_MIXER_AVS      0x2C
++#define GAM_MIXER_CRB2     0x30 /* Only for STiH418 */
+ #define GAM_MIXER_CRB      0x34
+ #define GAM_MIXER_ACT      0x38
+ #define GAM_MIXER_MBP      0x3C
+@@ -102,13 +105,22 @@ static void mixer_dbg_ctl(struct seq_file *s, int val)
+ 		seq_puts(s, "Nothing");
+ }
+ 
+-static void mixer_dbg_crb(struct seq_file *s, int val)
++static void mixer_dbg_crb(struct seq_file *s, struct sti_mixer *mixer, u64 val)
+ {
+ 	int i;
++	u32 shift, mask_id;
++
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor")) {
++		shift = 4;
++		mask_id = 0x0f;
++	} else {
++		shift = 3;
++		mask_id = 0x07;
++	}
+ 
+ 	seq_puts(s, "\tDepth: ");
+ 	for (i = 0; i < GAM_MIXER_NB_DEPTH_LEVEL; i++) {
+-		switch (val & GAM_DEPTH_MASK_ID) {
++		switch (val & mask_id) {
+ 		case GAM_DEPTH_VID0_ID:
+ 			seq_puts(s, "VID0");
+ 			break;
+@@ -133,7 +145,7 @@ static void mixer_dbg_crb(struct seq_file *s, int val)
+ 
+ 		if (i < GAM_MIXER_NB_DEPTH_LEVEL - 1)
+ 			seq_puts(s, " < ");
+-		val = val >> 3;
++		val = val >> shift;
+ 	}
+ }
+ 
+@@ -149,6 +161,7 @@ static int mixer_dbg_show(struct seq_file *s, void *arg)
+ {
+ 	struct drm_info_node *node = s->private;
+ 	struct sti_mixer *mixer = (struct sti_mixer *)node->info_ent->data;
++	u64 val;
+ 
+ 	seq_printf(s, "%s: (vaddr = 0x%p)",
+ 		   sti_mixer_to_str(mixer), mixer->regs);
+@@ -161,11 +174,18 @@ static int mixer_dbg_show(struct seq_file *s, void *arg)
+ 	DBGFS_DUMP(GAM_MIXER_AVO);
+ 	DBGFS_DUMP(GAM_MIXER_AVS);
+ 	DBGFS_DUMP(GAM_MIXER_CRB);
+-	mixer_dbg_crb(s, sti_mixer_reg_read(mixer, GAM_MIXER_CRB));
++	val = sti_mixer_reg_read(mixer, GAM_MIXER_CRB);
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor")) {
++		DBGFS_DUMP(GAM_MIXER_CRB2);
++		val |= ((u64)sti_mixer_reg_read(mixer, GAM_MIXER_CRB2) << 32);
++	}
++	mixer_dbg_crb(s, mixer, val);
+ 	DBGFS_DUMP(GAM_MIXER_ACT);
+-	DBGFS_DUMP(GAM_MIXER_MBP);
+-	DBGFS_DUMP(GAM_MIXER_MX0);
+-	mixer_dbg_mxn(s, mixer->regs + GAM_MIXER_MX0);
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih407-compositor")) {
++		DBGFS_DUMP(GAM_MIXER_MBP);
++		DBGFS_DUMP(GAM_MIXER_MX0);
++		mixer_dbg_mxn(s, mixer->regs + GAM_MIXER_MX0);
++	}
+ 	seq_putc(s, '\n');
+ 	return 0;
+ }
+@@ -238,7 +258,16 @@ int sti_mixer_set_plane_depth(struct sti_mixer *mixer, struct sti_plane *plane)
+ {
+ 	int plane_id, depth = plane->drm_plane.state->normalized_zpos;
+ 	unsigned int i;
+-	u32 mask, val;
++	u64 mask, val;
++	u32 shift, mask_id;
++
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor")) {
++		shift = 4;
++		mask_id = 0x0f;
++	} else {
++		shift = 3;
++		mask_id = 0x07;
++	}
+ 
+ 	switch (plane->desc) {
+ 	case STI_GDP_0:
+@@ -266,26 +295,37 @@ int sti_mixer_set_plane_depth(struct sti_mixer *mixer, struct sti_plane *plane)
+ 
+ 	/* Search if a previous depth was already assigned to the plane */
+ 	val = sti_mixer_reg_read(mixer, GAM_MIXER_CRB);
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		val |= ((u64)sti_mixer_reg_read(mixer, GAM_MIXER_CRB2) << 32);
+ 	for (i = 0; i < GAM_MIXER_NB_DEPTH_LEVEL; i++) {
+-		mask = GAM_DEPTH_MASK_ID << (3 * i);
+-		if ((val & mask) == plane_id << (3 * i))
++		mask = mask_id << (shift * i);
++		if ((val & mask) == plane_id << (shift * i))
+ 			break;
+ 	}
+ 
+-	mask |= GAM_DEPTH_MASK_ID << (3 * depth);
+-	plane_id = plane_id << (3 * depth);
++	mask |= mask_id << (shift * depth);
++	plane_id = plane_id << (shift * depth);
+ 
+ 	DRM_DEBUG_DRIVER("%s %s depth=%d\n", sti_mixer_to_str(mixer),
+ 			 sti_plane_to_str(plane), depth);
+ 	dev_dbg(mixer->dev, "GAM_MIXER_CRB val 0x%x mask 0x%x\n",
+-		plane_id, mask);
++		plane_id, (u32)(mask & 0xffffffff));
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		dev_dbg(mixer->dev, "GAM_MIXER_CRB2 val 0x%x mask 0x%x\n",
++			plane_id, (u32)(mask >> 32));
+ 
+ 	val &= ~mask;
+ 	val |= plane_id;
+-	sti_mixer_reg_write(mixer, GAM_MIXER_CRB, val);
++	sti_mixer_reg_write(mixer, GAM_MIXER_CRB, val & 0xffffffff);
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		sti_mixer_reg_write(mixer, GAM_MIXER_CRB2, val >> 32);
+ 
+ 	dev_dbg(mixer->dev, "Read GAM_MIXER_CRB 0x%x\n",
+ 		sti_mixer_reg_read(mixer, GAM_MIXER_CRB));
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		dev_dbg(mixer->dev, "Read GAM_MIXER_CRB2 0x%x\n",
++			sti_mixer_reg_read(mixer, GAM_MIXER_CRB2));
++
+ 	return 0;
+ }
+ 
+@@ -352,6 +392,9 @@ int sti_mixer_set_plane_status(struct sti_mixer *mixer,
+ 	val |= status ? mask : 0;
+ 	sti_mixer_reg_write(mixer, GAM_MIXER_CTL, val);
+ 
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		sti_mixer_reg_write(mixer, GAM_MIXER_OFF, 0x02);
++
+ 	return 0;
+ }
+ 
+-- 
+2.41.0
+
+From c1cee32b04fe3697a910f141a31f8629ce0c2a9e Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:29 +0000
+Subject: [PATCH 05/17] drm/sti: add support for stih418 in tvout
+
+The tvout for stih407 and stih418 differ in the connection with the
+vtg regarding to the hdmi output.  In order to cop with that, introduce
+a new compatible st,stih418-tvout in order to have the hdmi_sync_id
+being part of the data attached to each compatible.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_tvout.c | 35 +++++++++++++++++++++++++--------
+ 1 file changed, 27 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_tvout.c b/drivers/gpu/drm/sti/sti_tvout.c
+index 2499715a69b7..f6ac4a519e68 100644
+--- a/drivers/gpu/drm/sti/sti_tvout.c
++++ b/drivers/gpu/drm/sti/sti_tvout.c
+@@ -118,6 +118,7 @@ struct sti_tvout {
+ 	struct drm_encoder *hda;
+ 	struct drm_encoder *dvo;
+ 	bool debugfs_registered;
++	unsigned int hdmi_sync_id;
+ };
+ 
+ struct sti_tvout_encoder {
+@@ -130,6 +131,10 @@ struct sti_tvout_encoder {
+ 
+ #define to_sti_tvout(x) to_sti_tvout_encoder(x)->tvout
+ 
++struct sti_tvout_data {
++	unsigned int hdmi_sync_id;
++};
++
+ /* preformatter conversion matrix */
+ static const u32 rgb_to_ycbcr_601[8] = {
+ 	0xF927082E, 0x04C9FEAB, 0x01D30964, 0xFA95FD3D,
+@@ -359,14 +364,14 @@ static void tvout_hdmi_start(struct sti_tvout *tvout, bool main_path)
+ 		DRM_DEBUG_DRIVER("main vip for hdmi\n");
+ 		/* select the input sync for hdmi */
+ 		tvout_write(tvout,
+-			    TVO_SYNC_MAIN_VTG_SET_REF | VTG_SYNC_ID_HDMI,
++			    TVO_SYNC_MAIN_VTG_SET_REF | tvout->hdmi_sync_id,
+ 			    TVO_HDMI_SYNC_SEL);
+ 		tvo_in_vid_format = TVO_MAIN_IN_VID_FORMAT;
+ 	} else {
+ 		DRM_DEBUG_DRIVER("aux vip for hdmi\n");
+ 		/* select the input sync for hdmi */
+ 		tvout_write(tvout,
+-			    TVO_SYNC_AUX_VTG_SET_REF | VTG_SYNC_ID_HDMI,
++			    TVO_SYNC_AUX_VTG_SET_REF | tvout->hdmi_sync_id,
+ 			    TVO_HDMI_SYNC_SEL);
+ 		tvo_in_vid_format = TVO_AUX_IN_VID_FORMAT;
+ 	}
+@@ -833,10 +838,26 @@ static const struct component_ops sti_tvout_ops = {
+ 	.unbind	= sti_tvout_unbind,
+ };
+ 
++static const struct sti_tvout_data stih407_tvout_data = {
++	.hdmi_sync_id = 1,
++};
++
++static const struct sti_tvout_data stih418_tvout_data = {
++	.hdmi_sync_id = 5,
++};
++
++static const struct of_device_id tvout_of_match[] = {
++	{ .compatible = "st,stih407-tvout", .data = &stih407_tvout_data, },
++	{ .compatible = "st,stih418-tvout", .data = &stih418_tvout_data, },
++	{ /* end node */ }
++};
++MODULE_DEVICE_TABLE(of, tvout_of_match);
++
+ static int sti_tvout_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+ 	struct device_node *node = dev->of_node;
++	const struct sti_tvout_data *data;
+ 	struct sti_tvout *tvout;
+ 	struct resource *res;
+ 
+@@ -851,6 +872,10 @@ static int sti_tvout_probe(struct platform_device *pdev)
+ 
+ 	tvout->dev = dev;
+ 
++	/* populate data structure depending on compatibility */
++	data = of_match_node(tvout_of_match, node)->data;
++	tvout->hdmi_sync_id = data->hdmi_sync_id;
++
+ 	/* get memory resources */
+ 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tvout-reg");
+ 	if (!res) {
+@@ -878,12 +903,6 @@ static int sti_tvout_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
+-static const struct of_device_id tvout_of_match[] = {
+-	{ .compatible = "st,stih407-tvout", },
+-	{ /* end node */ }
+-};
+-MODULE_DEVICE_TABLE(of, tvout_of_match);
+-
+ struct platform_driver sti_tvout_driver = {
+ 	.driver = {
+ 		.name = "sti-tvout",
+-- 
+2.41.0
+
+From 916571ebe0d1e16bfb2d6769bffd0f2760d4ce4c Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:30 +0000
+Subject: [PATCH 06/17] drm/sti: remove VTG_SYNC_ID_HDMI from sti_vtg.h
+
+Since the synchro signal used for hdmi output and coming from the
+VTG differs between the stih407 and stih418 platforms, we cannot
+rely anymore on hardcoded value and involve drivers use compatible
+to figure out the value.
+The macro VTG_SYNC_ID_HDMI can thus be removed.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_vtg.h | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_vtg.h b/drivers/gpu/drm/sti/sti_vtg.h
+index 46faf141b2d9..bd0437bd1c8d 100644
+--- a/drivers/gpu/drm/sti/sti_vtg.h
++++ b/drivers/gpu/drm/sti/sti_vtg.h
+@@ -10,7 +10,6 @@
+ #define VTG_TOP_FIELD_EVENT     1
+ #define VTG_BOTTOM_FIELD_EVENT  2
+ 
+-#define VTG_SYNC_ID_HDMI        1
+ #define VTG_SYNC_ID_HDDCS       2
+ #define VTG_SYNC_ID_HDF         3
+ #define VTG_SYNC_ID_DVO         4
+-- 
+2.41.0
+
+From f27229a1376fca130296a72efb9dc89f2598371c Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:31 +0000
+Subject: [PATCH 07/17] drm/sti: add more possible GDP / VID planes entries in
+ sti_plane
+
+In order to address the STiH418, add more entries in sti_plane
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_plane.c | 8 ++++++++
+ drivers/gpu/drm/sti/sti_plane.h | 8 +++++++-
+ 2 files changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_plane.c b/drivers/gpu/drm/sti/sti_plane.c
+index 29e669ccec5b..f8d65d608b64 100644
+--- a/drivers/gpu/drm/sti/sti_plane.c
++++ b/drivers/gpu/drm/sti/sti_plane.c
+@@ -28,8 +28,16 @@ const char *sti_plane_to_str(struct sti_plane *plane)
+ 		return "GDP2";
+ 	case STI_GDP_3:
+ 		return "GDP3";
++	case STI_GDP_4:
++		return "GDP4";
++	case STI_GDP_5:
++		return "GDP5";
+ 	case STI_HQVDP_0:
+ 		return "HQVDP0";
++	case STI_HQVDP_1:
++		return "HQVDP1";
++	case STI_HQVDP_2:
++		return "HQVDP2";
+ 	case STI_CURSOR:
+ 		return "CURSOR";
+ 	default:
+diff --git a/drivers/gpu/drm/sti/sti_plane.h b/drivers/gpu/drm/sti/sti_plane.h
+index 2c0156bede9c..51fc25ed0287 100644
+--- a/drivers/gpu/drm/sti/sti_plane.h
++++ b/drivers/gpu/drm/sti/sti_plane.h
+@@ -25,7 +25,9 @@ enum sti_plane_id_of_type {
+ 	STI_ID_0 = 0,
+ 	STI_ID_1 = 1,
+ 	STI_ID_2 = 2,
+-	STI_ID_3 = 3
++	STI_ID_3 = 3,
++	STI_ID_4 = 4,
++	STI_ID_5 = 5,
+ };
+ 
+ enum sti_plane_desc {
+@@ -33,7 +35,11 @@ enum sti_plane_desc {
+ 	STI_GDP_1       = STI_GDP | STI_ID_1,
+ 	STI_GDP_2       = STI_GDP | STI_ID_2,
+ 	STI_GDP_3       = STI_GDP | STI_ID_3,
++	STI_GDP_4       = STI_GDP | STI_ID_4,
++	STI_GDP_5       = STI_GDP | STI_ID_5,
+ 	STI_HQVDP_0     = STI_VDP | STI_ID_0,
++	STI_HQVDP_1     = STI_VDP | STI_ID_1,
++	STI_HQVDP_2     = STI_VDP | STI_ID_2,
+ 	STI_CURSOR      = STI_CUR,
+ 	STI_BACK        = STI_BCK
+ };
+-- 
+2.41.0
+
+From afd99b996e6751889d6fbde9715ec70e0b7b40f1 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:32 +0000
+Subject: [PATCH 08/17] drm/sti: add more planes supports in sti_mixer
+
+On STiH418, the mixer is able to driver more layers of
+planes.  For this purpose, add those new possible entries
+and allow it to work in either STiH407 or STiH418 mode.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_mixer.c | 66 ++++++++++++++++++++++++++++-----
+ drivers/gpu/drm/sti/sti_mixer.h |  3 +-
+ 2 files changed, 58 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_mixer.c b/drivers/gpu/drm/sti/sti_mixer.c
+index 9cd780403d7b..d30e31e62268 100644
+--- a/drivers/gpu/drm/sti/sti_mixer.c
++++ b/drivers/gpu/drm/sti/sti_mixer.c
+@@ -42,7 +42,9 @@ module_param_named(bkgcolor, bkg_color, int, 0644);
+ #define GAM_DEPTH_GDP1_ID  4
+ #define GAM_DEPTH_GDP2_ID  5
+ #define GAM_DEPTH_GDP3_ID  6
+-#define GAM_DEPTH_MASK_ID  7
++#define GAM_DEPTH_GDP4_ID  7
++#define GAM_DEPTH_GDP5_ID  8
++#define GAM_DEPTH_VID2_ID  9
+ 
+ /* mask in CTL reg */
+ #define GAM_CTL_BACK_MASK  BIT(0)
+@@ -52,6 +54,10 @@ module_param_named(bkgcolor, bkg_color, int, 0644);
+ #define GAM_CTL_GDP1_MASK  BIT(4)
+ #define GAM_CTL_GDP2_MASK  BIT(5)
+ #define GAM_CTL_GDP3_MASK  BIT(6)
++#define GAM_CTL_GDP4_MASK  BIT(7)
++#define GAM_CTL_GDP5_MASK  BIT(8)
++/* CURSOR doesn't exist on STiH418 where VID2 exist */
++#define GAM_CTL_VID2_MASK  BIT(9)
+ #define GAM_CTL_CURSOR_MASK BIT(9)
+ 
+ const char *sti_mixer_to_str(struct sti_mixer *mixer)
+@@ -80,15 +86,16 @@ static inline void sti_mixer_reg_write(struct sti_mixer *mixer,
+ #define DBGFS_DUMP(reg) seq_printf(s, "\n  %-25s 0x%08X", #reg, \
+ 				   sti_mixer_reg_read(mixer, reg))
+ 
+-static void mixer_dbg_ctl(struct seq_file *s, int val)
++static void mixer_dbg_ctl(struct seq_file *s, int val, int depth)
+ {
+ 	unsigned int i;
+ 	int count = 0;
+ 	char *const disp_layer[] = {"BKG", "VID0", "VID1", "GDP0",
+-				    "GDP1", "GDP2", "GDP3"};
++				    "GDP1", "GDP2", "GDP3", "GDP4",
++				    "GDP5", "VID2"};
+ 
+ 	seq_puts(s, "\tEnabled: ");
+-	for (i = 0; i < 7; i++) {
++	for (i = 0; i < depth; i++) {
+ 		if (val & 1) {
+ 			seq_printf(s, "%s ", disp_layer[i]);
+ 			count++;
+@@ -108,18 +115,20 @@ static void mixer_dbg_ctl(struct seq_file *s, int val)
+ static void mixer_dbg_crb(struct seq_file *s, struct sti_mixer *mixer, u64 val)
+ {
+ 	int i;
+-	u32 shift, mask_id;
++	u32 shift, mask_id, mixer_depth;
+ 
+ 	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor")) {
+ 		shift = 4;
+ 		mask_id = 0x0f;
++		mixer_depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH418;
+ 	} else {
+ 		shift = 3;
+ 		mask_id = 0x07;
++		mixer_depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH407;
+ 	}
+ 
+ 	seq_puts(s, "\tDepth: ");
+-	for (i = 0; i < GAM_MIXER_NB_DEPTH_LEVEL; i++) {
++	for (i = 0; i < mixer_depth; i++) {
+ 		switch (val & mask_id) {
+ 		case GAM_DEPTH_VID0_ID:
+ 			seq_puts(s, "VID0");
+@@ -139,11 +148,20 @@ static void mixer_dbg_crb(struct seq_file *s, struct sti_mixer *mixer, u64 val)
+ 		case GAM_DEPTH_GDP3_ID:
+ 			seq_puts(s, "GDP3");
+ 			break;
++		case GAM_DEPTH_GDP4_ID:
++			seq_puts(s, "GDP4");
++			break;
++		case GAM_DEPTH_GDP5_ID:
++			seq_puts(s, "GDP5");
++			break;
++		case GAM_DEPTH_VID2_ID:
++			seq_puts(s, "VID2");
++			break;
+ 		default:
+ 			seq_puts(s, "---");
+ 		}
+ 
+-		if (i < GAM_MIXER_NB_DEPTH_LEVEL - 1)
++		if (i < mixer_depth - 1)
+ 			seq_puts(s, " < ");
+ 		val = val >> shift;
+ 	}
+@@ -161,13 +179,19 @@ static int mixer_dbg_show(struct seq_file *s, void *arg)
+ {
+ 	struct drm_info_node *node = s->private;
+ 	struct sti_mixer *mixer = (struct sti_mixer *)node->info_ent->data;
++	int depth;
+ 	u64 val;
+ 
++	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
++		depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH418 + 1;
++	else
++		depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH407 + 1;
++
+ 	seq_printf(s, "%s: (vaddr = 0x%p)",
+ 		   sti_mixer_to_str(mixer), mixer->regs);
+ 
+ 	DBGFS_DUMP(GAM_MIXER_CTL);
+-	mixer_dbg_ctl(s, sti_mixer_reg_read(mixer, GAM_MIXER_CTL));
++	mixer_dbg_ctl(s, sti_mixer_reg_read(mixer, GAM_MIXER_CTL), depth);
+ 	DBGFS_DUMP(GAM_MIXER_BKC);
+ 	DBGFS_DUMP(GAM_MIXER_BCO);
+ 	DBGFS_DUMP(GAM_MIXER_BCS);
+@@ -259,14 +283,16 @@ int sti_mixer_set_plane_depth(struct sti_mixer *mixer, struct sti_plane *plane)
+ 	int plane_id, depth = plane->drm_plane.state->normalized_zpos;
+ 	unsigned int i;
+ 	u64 mask, val;
+-	u32 shift, mask_id;
++	u32 shift, mask_id, mixer_depth;
+ 
+ 	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor")) {
+ 		shift = 4;
+ 		mask_id = 0x0f;
++		mixer_depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH418;
+ 	} else {
+ 		shift = 3;
+ 		mask_id = 0x07;
++		mixer_depth = GAM_MIXER_NB_DEPTH_LEVEL_STIH407;
+ 	}
+ 
+ 	switch (plane->desc) {
+@@ -285,6 +311,18 @@ int sti_mixer_set_plane_depth(struct sti_mixer *mixer, struct sti_plane *plane)
+ 	case STI_HQVDP_0:
+ 		plane_id = GAM_DEPTH_VID0_ID;
+ 		break;
++	case STI_HQVDP_1:
++		plane_id = GAM_DEPTH_VID1_ID;
++		break;
++	case STI_GDP_4:
++		plane_id = GAM_DEPTH_GDP4_ID;
++		break;
++	case STI_GDP_5:
++		plane_id = GAM_DEPTH_GDP5_ID;
++		break;
++	case STI_HQVDP_2:
++		plane_id = GAM_DEPTH_VID2_ID;
++		break;
+ 	case STI_CURSOR:
+ 		/* no need to set depth for cursor */
+ 		return 0;
+@@ -297,7 +335,7 @@ int sti_mixer_set_plane_depth(struct sti_mixer *mixer, struct sti_plane *plane)
+ 	val = sti_mixer_reg_read(mixer, GAM_MIXER_CRB);
+ 	if (of_device_is_compatible(mixer->dev->of_node, "st,stih418-compositor"))
+ 		val |= ((u64)sti_mixer_reg_read(mixer, GAM_MIXER_CRB2) << 32);
+-	for (i = 0; i < GAM_MIXER_NB_DEPTH_LEVEL; i++) {
++	for (i = 0; i < mixer_depth; i++) {
+ 		mask = mask_id << (shift * i);
+ 		if ((val & mask) == plane_id << (shift * i))
+ 			break;
+@@ -366,6 +404,14 @@ static u32 sti_mixer_get_plane_mask(struct sti_plane *plane)
+ 		return GAM_CTL_GDP3_MASK;
+ 	case STI_HQVDP_0:
+ 		return GAM_CTL_VID0_MASK;
++	case STI_HQVDP_1:
++		return GAM_CTL_VID1_MASK;
++	case STI_GDP_4:
++		return GAM_CTL_GDP4_MASK;
++	case STI_GDP_5:
++		return GAM_CTL_GDP5_MASK;
++	case STI_HQVDP_2:
++		return GAM_CTL_VID2_MASK;
+ 	case STI_CURSOR:
+ 		return GAM_CTL_CURSOR_MASK;
+ 	default:
+diff --git a/drivers/gpu/drm/sti/sti_mixer.h b/drivers/gpu/drm/sti/sti_mixer.h
+index ab06beb7b258..1ce7c6b4b4f3 100644
+--- a/drivers/gpu/drm/sti/sti_mixer.h
++++ b/drivers/gpu/drm/sti/sti_mixer.h
+@@ -61,7 +61,8 @@ void sti_mixer_set_background_status(struct sti_mixer *mixer, bool enable);
+ void sti_mixer_debugfs_init(struct sti_mixer *mixer, struct drm_minor *minor);
+ 
+ /* depth in Cross-bar control = z order */
+-#define GAM_MIXER_NB_DEPTH_LEVEL 6
++#define GAM_MIXER_NB_DEPTH_LEVEL_STIH407 6
++#define GAM_MIXER_NB_DEPTH_LEVEL_STIH418 9
+ 
+ #define STI_MIXER_MAIN 0
+ #define STI_MIXER_AUX  1
+-- 
+2.41.0
+
+From a7b885d22e898a0741180b5f7ce747f45fbef407 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:33 +0000
+Subject: [PATCH 09/17] drm/sti: add support for GDPPLUS / stih418 GDPs
+
+The STiH418 platform embeds two kinds of graphical planes (GDP),
+so called GDPPLUS which has additional (yet unimplemented)
+features compared to the GDP, and also the GDP.
+Register map of GDPPLUS slightly differ from the GDP even if,
+for common functionalities registers name and behavior are the
+same (but not at same addresses).  For that purpose, this commit
+rework the way of addressing the GDP(PLUS) registers.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_compositor.c |   4 +
+ drivers/gpu/drm/sti/sti_compositor.h |   1 +
+ drivers/gpu/drm/sti/sti_gdp.c        | 250 ++++++++++++++++-----------
+ drivers/gpu/drm/sti/sti_gdp.h        |   8 +-
+ 4 files changed, 163 insertions(+), 100 deletions(-)
+
+diff --git a/drivers/gpu/drm/sti/sti_compositor.c b/drivers/gpu/drm/sti/sti_compositor.c
+index 142a8e1b4436..377684661b02 100644
+--- a/drivers/gpu/drm/sti/sti_compositor.c
++++ b/drivers/gpu/drm/sti/sti_compositor.c
+@@ -87,6 +87,7 @@ static int sti_compositor_bind(struct device *dev,
+ 					     compo->regs + desc[i].offset);
+ 			break;
+ 		case STI_GPD_SUBDEV:
++		case STI_GPDPLUS_SUBDEV:
+ 		case STI_CURSOR_SUBDEV:
+ 			/* Nothing to do, wait for the second round */
+ 			break;
+@@ -120,7 +121,10 @@ static int sti_compositor_bind(struct device *dev,
+ 			}
+ 			break;
+ 		case STI_GPD_SUBDEV:
++		case STI_GPDPLUS_SUBDEV:
+ 			primary = sti_gdp_create(drm_dev, compo->dev,
++						 desc[i].type == STI_GPD_SUBDEV ?
++						 STI_GDP_TYPE_GDP : STI_GDP_TYPE_GDPPLUS,
+ 						 desc[i].id,
+ 						 compo->regs + desc[i].offset,
+ 						 (1 << mixer_id) - 1,
+diff --git a/drivers/gpu/drm/sti/sti_compositor.h b/drivers/gpu/drm/sti/sti_compositor.h
+index 25bb01bdd013..62545210b96d 100644
+--- a/drivers/gpu/drm/sti/sti_compositor.h
++++ b/drivers/gpu/drm/sti/sti_compositor.h
+@@ -24,6 +24,7 @@ enum sti_compositor_subdev_type {
+ 	STI_MIXER_MAIN_SUBDEV,
+ 	STI_MIXER_AUX_SUBDEV,
+ 	STI_GPD_SUBDEV,
++	STI_GPDPLUS_SUBDEV,
+ 	STI_VID_SUBDEV,
+ 	STI_CURSOR_SUBDEV,
+ };
+diff --git a/drivers/gpu/drm/sti/sti_gdp.c b/drivers/gpu/drm/sti/sti_gdp.c
+index 43c72c2604a0..1f4064d64f15 100644
+--- a/drivers/gpu/drm/sti/sti_gdp.c
++++ b/drivers/gpu/drm/sti/sti_gdp.c
+@@ -55,6 +55,7 @@ static struct gdp_format_to_str {
+ 		GDP2STR(ARGB4444)
+ 		};
+ 
++/* GDP register offsets */
+ #define GAM_GDP_CTL_OFFSET      0x00
+ #define GAM_GDP_AGC_OFFSET      0x04
+ #define GAM_GDP_VPO_OFFSET      0x0C
+@@ -67,8 +68,45 @@ static struct gdp_format_to_str {
+ #define GAM_GDP_KEY2_OFFSET     0x2C
+ #define GAM_GDP_PPT_OFFSET      0x34
+ #define GAM_GDP_CML_OFFSET      0x3C
++#define GAM_GDP_NODE_SIZE	0x40
+ #define GAM_GDP_MST_OFFSET      0x68
+ 
++/* GDPPLUS register offsets */
++#define	GAM_GDPPLUS_CTL_OFFSET	0x00
++#define	GAM_GDPPLUS_AGC_OFFSET	0x04
++#define	GAM_GDPPLUS_VPO_OFFSET	0x08
++#define	GAM_GDPPLUS_VPS_OFFSET	0x0C
++#define	GAM_GDPPLUS_PML_OFFSET	0x10
++#define	GAM_GDPPLUS_PMP_OFFSET	0x14
++#define	GAM_GDPPLUS_SIZE_OFFSET	0x18
++#define	GAM_GDPPLUS_NVN_OFFSET	0x1C
++#define	GAM_GDPPLUS_KEY1_OFFSET	0x20
++#define	GAM_GDPPLUS_KEY2_OFFSET	0x24
++#define	GAM_GDPPLUS_HFP_OFFSET	0x28
++#define	GAM_GDPPLUS_PPT_OFFSET	0x2C
++#define	GAM_GDPPLUS_VFP_OFFSET	0x30
++#define	GAM_GDPPLUS_CML_OFFSET	0x34
++#define	GAM_GDPPLUS_CROP_OFFSET	0x38
++#define	GAM_GDPPLUS_BT0_OFFSET	0x3C
++#define	GAM_GDPPLUS_BT1_OFFSET	0x40
++#define	GAM_GDPPLUS_BT2_OFFSET	0x44
++#define	GAM_GDPPLUS_BT3_OFFSET	0x48
++#define	GAM_GDPPLUS_BT4_OFFSET	0x4C
++#define	GAM_GDPPLUS_HSRC_OFFSET	0x50
++#define	GAM_GDPPLUS_HIP_OFFSET	0x54
++#define	GAM_GDPPLUS_HP1_OFFSET	0x58
++#define	GAM_GDPPLUS_HP2_OFFSET	0x5C
++#define	GAM_GDPPLUS_VSRC_OFFSET	0x60
++#define	GAM_GDPPLUS_VIP_OFFSET	0x64
++#define	GAM_GDPPLUS_VP1_OFFSET	0x68
++#define	GAM_GDPPLUS_VP2_OFFSET	0x6C
++#define GAM_GDPPLUS_NODE_SIZE	0x500
++
++/* Accessor for common registers */
++#define GAM_OFFSET(reg, type)	((type) == STI_GDP_TYPE_GDP ? GAM_GDP_ ## reg ## _OFFSET :\
++				 GAM_GDPPLUS_ ## reg ## _OFFSET)
++#define GAM_OFFSET_U32(reg, type)	(GAM_OFFSET(reg, type) >> 2)
++
+ #define GAM_GDP_ALPHARANGE_255  BIT(5)
+ #define GAM_GDP_AGC_FULL_RANGE  0x00808080
+ #define GAM_GDP_PPT_IGNORE      (BIT(1) | BIT(0))
+@@ -79,29 +117,10 @@ static struct gdp_format_to_str {
+ #define GDP_NODE_NB_BANK        2
+ #define GDP_NODE_PER_FIELD      2
+ 
+-struct sti_gdp_node {
+-	u32 gam_gdp_ctl;
+-	u32 gam_gdp_agc;
+-	u32 reserved1;
+-	u32 gam_gdp_vpo;
+-	u32 gam_gdp_vps;
+-	u32 gam_gdp_pml;
+-	u32 gam_gdp_pmp;
+-	u32 gam_gdp_size;
+-	u32 reserved2;
+-	u32 gam_gdp_nvn;
+-	u32 gam_gdp_key1;
+-	u32 gam_gdp_key2;
+-	u32 reserved3;
+-	u32 gam_gdp_ppt;
+-	u32 reserved4;
+-	u32 gam_gdp_cml;
+-};
+-
+ struct sti_gdp_node_list {
+-	struct sti_gdp_node *top_field;
++	u32 *top_field;
+ 	dma_addr_t top_field_paddr;
+-	struct sti_gdp_node *btm_field;
++	u32 *btm_field;
+ 	dma_addr_t btm_field_paddr;
+ };
+ 
+@@ -130,6 +149,7 @@ struct sti_gdp {
+ 	bool is_curr_top;
+ 	struct sti_gdp_node_list node_list[GDP_NODE_NB_BANK];
+ 	struct sti_vtg *vtg;
++	enum sti_gdp_type type;
+ };
+ 
+ #define to_sti_gdp(x) container_of(x, struct sti_gdp, plane)
+@@ -145,8 +165,8 @@ static const uint32_t gdp_supported_formats[] = {
+ 	DRM_FORMAT_RGB888,
+ };
+ 
+-#define DBGFS_DUMP(reg) seq_printf(s, "\n  %-25s 0x%08X", #reg, \
+-				   readl(gdp->regs + reg ## _OFFSET))
++#define DBGFS_DUMP(reg, offset) seq_printf(s, "\n  %-25s 0x%08X", #reg, \
++					   readl(gdp->regs + (offset)))
+ 
+ static void gdp_dbg_ctl(struct seq_file *s, int val)
+ {
+@@ -216,6 +236,7 @@ static int gdp_dbg_show(struct seq_file *s, void *data)
+ {
+ 	struct drm_info_node *node = s->private;
+ 	struct sti_gdp *gdp = (struct sti_gdp *)node->info_ent->data;
++	struct device_node *np = gdp->dev->of_node;
+ 	struct drm_plane *drm_plane = &gdp->plane.drm_plane;
+ 	struct drm_crtc *crtc;
+ 
+@@ -226,26 +247,28 @@ static int gdp_dbg_show(struct seq_file *s, void *data)
+ 	seq_printf(s, "%s: (vaddr = 0x%p)",
+ 		   sti_plane_to_str(&gdp->plane), gdp->regs);
+ 
+-	DBGFS_DUMP(GAM_GDP_CTL);
+-	gdp_dbg_ctl(s, readl(gdp->regs + GAM_GDP_CTL_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_AGC);
+-	DBGFS_DUMP(GAM_GDP_VPO);
+-	gdp_dbg_vpo(s, readl(gdp->regs + GAM_GDP_VPO_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_VPS);
+-	gdp_dbg_vps(s, readl(gdp->regs + GAM_GDP_VPS_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_PML);
+-	DBGFS_DUMP(GAM_GDP_PMP);
+-	DBGFS_DUMP(GAM_GDP_SIZE);
+-	gdp_dbg_size(s, readl(gdp->regs + GAM_GDP_SIZE_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_NVN);
+-	gdp_dbg_nvn(s, gdp, readl(gdp->regs + GAM_GDP_NVN_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_KEY1);
+-	DBGFS_DUMP(GAM_GDP_KEY2);
+-	DBGFS_DUMP(GAM_GDP_PPT);
+-	gdp_dbg_ppt(s, readl(gdp->regs + GAM_GDP_PPT_OFFSET));
+-	DBGFS_DUMP(GAM_GDP_CML);
+-	DBGFS_DUMP(GAM_GDP_MST);
+-	gdp_dbg_mst(s, readl(gdp->regs + GAM_GDP_MST_OFFSET));
++	DBGFS_DUMP(CTL, GAM_OFFSET(CTL, gdp->type));
++	gdp_dbg_ctl(s, readl(gdp->regs + GAM_OFFSET(CTL, gdp->type)));
++	DBGFS_DUMP(AGC, GAM_OFFSET(AGC, gdp->type));
++	DBGFS_DUMP(VPO, GAM_OFFSET(VPO, gdp->type));
++	gdp_dbg_vpo(s, readl(gdp->regs + GAM_OFFSET(VPO, gdp->type)));
++	DBGFS_DUMP(VPS, GAM_OFFSET(VPS, gdp->type));
++	gdp_dbg_vps(s, readl(gdp->regs + GAM_OFFSET(VPS, gdp->type)));
++	DBGFS_DUMP(PML, GAM_OFFSET(PML, gdp->type));
++	DBGFS_DUMP(PMP, GAM_OFFSET(PMP, gdp->type));
++	DBGFS_DUMP(SIZE, GAM_OFFSET(SIZE, gdp->type));
++	gdp_dbg_size(s, readl(gdp->regs + GAM_OFFSET(SIZE, gdp->type)));
++	DBGFS_DUMP(NVN, GAM_OFFSET(NVN, gdp->type));
++	gdp_dbg_nvn(s, gdp, readl(gdp->regs + GAM_OFFSET(NVN, gdp->type)));
++	DBGFS_DUMP(KEY1, GAM_OFFSET(KEY1, gdp->type));
++	DBGFS_DUMP(KEY2, GAM_OFFSET(KEY2, gdp->type));
++	DBGFS_DUMP(PPT, GAM_OFFSET(PPT, gdp->type));
++	gdp_dbg_ppt(s, readl(gdp->regs + GAM_OFFSET(PPT, gdp->type)));
++	DBGFS_DUMP(CML, GAM_OFFSET(CML, gdp->type));
++	if (of_device_is_compatible(np, "st,stih407-compositor")) {
++		DBGFS_DUMP(MST, GAM_GDP_MST_OFFSET);
++		gdp_dbg_mst(s, readl(gdp->regs + GAM_GDP_MST_OFFSET));
++	}
+ 
+ 	seq_puts(s, "\n\n");
+ 	if (!crtc)
+@@ -257,26 +280,26 @@ static int gdp_dbg_show(struct seq_file *s, void *data)
+ 	return 0;
+ }
+ 
+-static void gdp_node_dump_node(struct seq_file *s, struct sti_gdp_node *node)
++static void gdp_node_dump_node(struct seq_file *s, u32 *node, enum sti_gdp_type type)
+ {
+ 	seq_printf(s, "\t@:0x%p", node);
+-	seq_printf(s, "\n\tCTL  0x%08X", node->gam_gdp_ctl);
+-	gdp_dbg_ctl(s, node->gam_gdp_ctl);
+-	seq_printf(s, "\n\tAGC  0x%08X", node->gam_gdp_agc);
+-	seq_printf(s, "\n\tVPO  0x%08X", node->gam_gdp_vpo);
+-	gdp_dbg_vpo(s, node->gam_gdp_vpo);
+-	seq_printf(s, "\n\tVPS  0x%08X", node->gam_gdp_vps);
+-	gdp_dbg_vps(s, node->gam_gdp_vps);
+-	seq_printf(s, "\n\tPML  0x%08X", node->gam_gdp_pml);
+-	seq_printf(s, "\n\tPMP  0x%08X", node->gam_gdp_pmp);
+-	seq_printf(s, "\n\tSIZE 0x%08X", node->gam_gdp_size);
+-	gdp_dbg_size(s, node->gam_gdp_size);
+-	seq_printf(s, "\n\tNVN  0x%08X", node->gam_gdp_nvn);
+-	seq_printf(s, "\n\tKEY1 0x%08X", node->gam_gdp_key1);
+-	seq_printf(s, "\n\tKEY2 0x%08X", node->gam_gdp_key2);
+-	seq_printf(s, "\n\tPPT  0x%08X", node->gam_gdp_ppt);
+-	gdp_dbg_ppt(s, node->gam_gdp_ppt);
+-	seq_printf(s, "\n\tCML  0x%08X\n", node->gam_gdp_cml);
++	seq_printf(s, "\n\tCTL  0x%08X", node[GAM_OFFSET_U32(CTL, type)]);
++	gdp_dbg_ctl(s, node[GAM_OFFSET_U32(CTL, type)]);
++	seq_printf(s, "\n\tAGC  0x%08X", node[GAM_OFFSET_U32(AGC, type)]);
++	seq_printf(s, "\n\tVPO  0x%08X", node[GAM_OFFSET_U32(VPO, type)]);
++	gdp_dbg_vpo(s, node[GAM_OFFSET_U32(VPO, type)]);
++	seq_printf(s, "\n\tVPS  0x%08X", node[GAM_OFFSET_U32(VPS, type)]);
++	gdp_dbg_vps(s, node[GAM_OFFSET_U32(VPS, type)]);
++	seq_printf(s, "\n\tPML  0x%08X", node[GAM_OFFSET_U32(PML, type)]);
++	seq_printf(s, "\n\tPMP  0x%08X", node[GAM_OFFSET_U32(PMP, type)]);
++	seq_printf(s, "\n\tSIZE 0x%08X", node[GAM_OFFSET_U32(SIZE, type)]);
++	gdp_dbg_size(s, node[GAM_OFFSET_U32(SIZE, type)]);
++	seq_printf(s, "\n\tNVN  0x%08X", node[GAM_OFFSET_U32(NVN, type)]);
++	seq_printf(s, "\n\tKEY1 0x%08X", node[GAM_OFFSET_U32(KEY1, type)]);
++	seq_printf(s, "\n\tKEY2 0x%08X", node[GAM_OFFSET_U32(KEY2, type)]);
++	seq_printf(s, "\n\tPPT  0x%08X", node[GAM_OFFSET_U32(PPT, type)]);
++	gdp_dbg_ppt(s, node[GAM_OFFSET_U32(PPT, type)]);
++	seq_printf(s, "\n\tCML  0x%08X\n", node[GAM_OFFSET_U32(CML, type)]);
+ }
+ 
+ static int gdp_node_dbg_show(struct seq_file *s, void *arg)
+@@ -287,9 +310,9 @@ static int gdp_node_dbg_show(struct seq_file *s, void *arg)
+ 
+ 	for (b = 0; b < GDP_NODE_NB_BANK; b++) {
+ 		seq_printf(s, "\n%s[%d].top", sti_plane_to_str(&gdp->plane), b);
+-		gdp_node_dump_node(s, gdp->node_list[b].top_field);
++		gdp_node_dump_node(s, gdp->node_list[b].top_field, gdp->type);
+ 		seq_printf(s, "\n%s[%d].btm", sti_plane_to_str(&gdp->plane), b);
+-		gdp_node_dump_node(s, gdp->node_list[b].btm_field);
++		gdp_node_dump_node(s, gdp->node_list[b].btm_field, gdp->type);
+ 	}
+ 
+ 	return 0;
+@@ -315,6 +338,16 @@ static struct drm_info_list gdp3_debugfs_files[] = {
+ 	{ "gdp3_node", gdp_node_dbg_show, 0, NULL },
+ };
+ 
++static struct drm_info_list gdp4_debugfs_files[] = {
++	{ "gdp4", gdp_dbg_show, 0, NULL },
++	{ "gdp4_node", gdp_node_dbg_show, 0, NULL },
++};
++
++static struct drm_info_list gdp5_debugfs_files[] = {
++	{ "gdp5", gdp_dbg_show, 0, NULL },
++	{ "gdp5_node", gdp_node_dbg_show, 0, NULL },
++};
++
+ static int gdp_debugfs_init(struct sti_gdp *gdp, struct drm_minor *minor)
+ {
+ 	unsigned int i;
+@@ -338,6 +371,14 @@ static int gdp_debugfs_init(struct sti_gdp *gdp, struct drm_minor *minor)
+ 		gdp_debugfs_files = gdp3_debugfs_files;
+ 		nb_files = ARRAY_SIZE(gdp3_debugfs_files);
+ 		break;
++	case STI_GDP_4:
++		gdp_debugfs_files = gdp4_debugfs_files;
++		nb_files = ARRAY_SIZE(gdp4_debugfs_files);
++		break;
++	case STI_GDP_5:
++		gdp_debugfs_files = gdp5_debugfs_files;
++		nb_files = ARRAY_SIZE(gdp5_debugfs_files);
++		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+@@ -397,9 +438,10 @@ static int sti_gdp_get_alpharange(int format)
+ static struct sti_gdp_node_list *sti_gdp_get_free_nodes(struct sti_gdp *gdp)
+ {
+ 	int hw_nvn;
++	u32 nvn_off = GAM_OFFSET(NVN, gdp->type);
+ 	unsigned int i;
+ 
+-	hw_nvn = readl(gdp->regs + GAM_GDP_NVN_OFFSET);
++	hw_nvn = readl(gdp->regs + nvn_off);
+ 	if (!hw_nvn)
+ 		goto end;
+ 
+@@ -429,9 +471,10 @@ static
+ struct sti_gdp_node_list *sti_gdp_get_current_nodes(struct sti_gdp *gdp)
+ {
+ 	int hw_nvn;
++	u32 nvn_off = GAM_OFFSET(NVN, gdp->type);
+ 	unsigned int i;
+ 
+-	hw_nvn = readl(gdp->regs + GAM_GDP_NVN_OFFSET);
++	hw_nvn = readl(gdp->regs + nvn_off);
+ 	if (!hw_nvn)
+ 		goto end;
+ 
+@@ -456,13 +499,14 @@ struct sti_gdp_node_list *sti_gdp_get_current_nodes(struct sti_gdp *gdp)
+ static void sti_gdp_disable(struct sti_gdp *gdp)
+ {
+ 	unsigned int i;
++	u32 ppt_off = GAM_OFFSET_U32(PPT, gdp->type);
+ 
+ 	DRM_DEBUG_DRIVER("%s\n", sti_plane_to_str(&gdp->plane));
+ 
+ 	/* Set the nodes as 'to be ignored on mixer' */
+ 	for (i = 0; i < GDP_NODE_NB_BANK; i++) {
+-		gdp->node_list[i].top_field->gam_gdp_ppt |= GAM_GDP_PPT_IGNORE;
+-		gdp->node_list[i].btm_field->gam_gdp_ppt |= GAM_GDP_PPT_IGNORE;
++		gdp->node_list[i].top_field[ppt_off] |= GAM_GDP_PPT_IGNORE;
++		gdp->node_list[i].btm_field[ppt_off] |= GAM_GDP_PPT_IGNORE;
+ 	}
+ 
+ 	if (sti_vtg_unregister_client(gdp->vtg, &gdp->vtg_field_nb))
+@@ -519,11 +563,16 @@ static void sti_gdp_init(struct sti_gdp *gdp)
+ 	struct device_node *np = gdp->dev->of_node;
+ 	dma_addr_t dma_addr;
+ 	void *base;
+-	unsigned int i, size;
++	unsigned int i, size, gdp_node_size;
++
++	/* Check the type of GDP */
++	if (gdp->type == STI_GDP_TYPE_GDP)
++		gdp_node_size = GAM_GDP_NODE_SIZE;
++	else
++		gdp_node_size = GAM_GDPPLUS_NODE_SIZE;
+ 
+ 	/* Allocate all the nodes within a single memory page */
+-	size = sizeof(struct sti_gdp_node) *
+-	    GDP_NODE_PER_FIELD * GDP_NODE_NB_BANK;
++	size = gdp_node_size * GDP_NODE_PER_FIELD * GDP_NODE_NB_BANK;
+ 	base = dma_alloc_wc(gdp->dev, size, &dma_addr, GFP_KERNEL);
+ 
+ 	if (!base) {
+@@ -541,8 +590,8 @@ static void sti_gdp_init(struct sti_gdp *gdp)
+ 		gdp->node_list[i].top_field_paddr = dma_addr;
+ 
+ 		DRM_DEBUG_DRIVER("node[%d].top_field=%p\n", i, base);
+-		base += sizeof(struct sti_gdp_node);
+-		dma_addr += sizeof(struct sti_gdp_node);
++		base += gdp_node_size;
++		dma_addr += gdp_node_size;
+ 
+ 		if (dma_addr & 0xF) {
+ 			DRM_ERROR("Mem alignment failed\n");
+@@ -551,8 +600,8 @@ static void sti_gdp_init(struct sti_gdp *gdp)
+ 		gdp->node_list[i].btm_field = base;
+ 		gdp->node_list[i].btm_field_paddr = dma_addr;
+ 		DRM_DEBUG_DRIVER("node[%d].btm_field=%p\n", i, base);
+-		base += sizeof(struct sti_gdp_node);
+-		dma_addr += sizeof(struct sti_gdp_node);
++		base += gdp_node_size;
++		dma_addr += gdp_node_size;
+ 	}
+ 
+ 	if (of_device_is_compatible(np, "st,stih407-compositor")) {
+@@ -717,7 +766,7 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 	struct drm_gem_dma_object *dma_obj;
+ 	struct sti_gdp_node_list *list;
+ 	struct sti_gdp_node_list *curr_list;
+-	struct sti_gdp_node *top_field, *btm_field;
++	u32 *top_field, *btm_field;
+ 	u32 dma_updated_top;
+ 	u32 dma_updated_btm;
+ 	int format;
+@@ -771,12 +820,12 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 		sti_plane_to_str(plane), top_field, btm_field);
+ 
+ 	/* build the top field */
+-	top_field->gam_gdp_agc = GAM_GDP_AGC_FULL_RANGE;
+-	top_field->gam_gdp_ctl = WAIT_NEXT_VSYNC;
++	top_field[GAM_OFFSET_U32(AGC, gdp->type)] = GAM_GDP_AGC_FULL_RANGE;
++	top_field[GAM_OFFSET_U32(CTL, gdp->type)] = WAIT_NEXT_VSYNC;
+ 	format = sti_gdp_fourcc2format(fb->format->format);
+-	top_field->gam_gdp_ctl |= format;
+-	top_field->gam_gdp_ctl |= sti_gdp_get_alpharange(format);
+-	top_field->gam_gdp_ppt &= ~GAM_GDP_PPT_IGNORE;
++	top_field[GAM_OFFSET_U32(CTL, gdp->type)] |= format;
++	top_field[GAM_OFFSET_U32(CTL, gdp->type)] |= sti_gdp_get_alpharange(format);
++	top_field[GAM_OFFSET_U32(PPT, gdp->type)] &= ~GAM_GDP_PPT_IGNORE;
+ 
+ 	dma_obj = drm_fb_dma_get_gem_obj(fb, 0);
+ 
+@@ -786,9 +835,9 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 
+ 	/* pixel memory location */
+ 	bpp = fb->format->cpp[0];
+-	top_field->gam_gdp_pml = (u32) dma_obj->dma_addr + fb->offsets[0];
+-	top_field->gam_gdp_pml += src_x * bpp;
+-	top_field->gam_gdp_pml += src_y * fb->pitches[0];
++	top_field[GAM_OFFSET_U32(PML, gdp->type)] = (u32)dma_obj->dma_addr + fb->offsets[0];
++	top_field[GAM_OFFSET_U32(PML, gdp->type)] += src_x * bpp;
++	top_field[GAM_OFFSET_U32(PML, gdp->type)] += src_y * fb->pitches[0];
+ 
+ 	/* output parameters (clamped / cropped) */
+ 	dst_w = sti_gdp_get_dst(gdp->dev, dst_w, src_w);
+@@ -797,23 +846,25 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 	yds = sti_vtg_get_line_number(*mode, dst_y + dst_h - 1);
+ 	xdo = sti_vtg_get_pixel_number(*mode, dst_x);
+ 	xds = sti_vtg_get_pixel_number(*mode, dst_x + dst_w - 1);
+-	top_field->gam_gdp_vpo = (ydo << 16) | xdo;
+-	top_field->gam_gdp_vps = (yds << 16) | xds;
++	top_field[GAM_OFFSET_U32(VPO, gdp->type)] = (ydo << 16) | xdo;
++	top_field[GAM_OFFSET_U32(VPS, gdp->type)] = (yds << 16) | xds;
+ 
+ 	/* input parameters */
+ 	src_w = dst_w;
+-	top_field->gam_gdp_pmp = fb->pitches[0];
+-	top_field->gam_gdp_size = src_h << 16 | src_w;
++	top_field[GAM_OFFSET_U32(PMP, gdp->type)] = fb->pitches[0];
++	top_field[GAM_OFFSET_U32(SIZE, gdp->type)] = src_h << 16 | src_w;
+ 
+ 	/* Same content and chained together */
+-	memcpy(btm_field, top_field, sizeof(*btm_field));
+-	top_field->gam_gdp_nvn = list->btm_field_paddr;
+-	btm_field->gam_gdp_nvn = list->top_field_paddr;
++	memcpy(btm_field, top_field,
++	       gdp->type == STI_GDP_TYPE_GDP ?
++	       GAM_GDP_NODE_SIZE : GAM_GDPPLUS_NODE_SIZE);
++	top_field[GAM_OFFSET_U32(NVN, gdp->type)] = list->btm_field_paddr;
++	btm_field[GAM_OFFSET_U32(NVN, gdp->type)] = list->top_field_paddr;
+ 
+ 	/* Interlaced mode */
+ 	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+-		btm_field->gam_gdp_pml = top_field->gam_gdp_pml +
+-					 fb->pitches[0];
++		btm_field[GAM_OFFSET_U32(PML, gdp->type)] =
++			top_field[GAM_OFFSET_U32(PML, gdp->type)] + fb->pitches[0];
+ 
+ 	/* Update the NVN field of the 'right' field of the current GDP node
+ 	 * (being used by the HW) with the address of the updated ('free') top
+@@ -829,10 +880,10 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 	dma_updated_btm = list->btm_field_paddr;
+ 
+ 	dev_dbg(gdp->dev, "Current NVN:0x%X\n",
+-		readl(gdp->regs + GAM_GDP_NVN_OFFSET));
++		readl(gdp->regs + GAM_OFFSET(NVN, gdp->type)));
+ 	dev_dbg(gdp->dev, "Posted buff: %lx current buff: %x\n",
+ 		(unsigned long) dma_obj->dma_addr,
+-		readl(gdp->regs + GAM_GDP_PML_OFFSET));
++		readl(gdp->regs + GAM_OFFSET(PML, gdp->type)));
+ 
+ 	if (!curr_list) {
+ 		/* First update or invalid node should directly write in the
+@@ -842,7 +893,7 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 
+ 		writel(gdp->is_curr_top ?
+ 				dma_updated_btm : dma_updated_top,
+-				gdp->regs + GAM_GDP_NVN_OFFSET);
++				gdp->regs + GAM_OFFSET(NVN, gdp->type));
+ 		goto end;
+ 	}
+ 
+@@ -851,15 +902,15 @@ static void sti_gdp_atomic_update(struct drm_plane *drm_plane,
+ 			/* Do not update in the middle of the frame, but
+ 			 * postpone the update after the bottom field has
+ 			 * been displayed */
+-			curr_list->btm_field->gam_gdp_nvn = dma_updated_top;
++			curr_list->btm_field[GAM_OFFSET_U32(NVN, gdp->type)] = dma_updated_top;
+ 		} else {
+ 			/* Direct update to avoid one frame delay */
+ 			writel(dma_updated_top,
+-			       gdp->regs + GAM_GDP_NVN_OFFSET);
++			       gdp->regs + GAM_OFFSET(NVN, gdp->type));
+ 		}
+ 	} else {
+ 		/* Direct update for progressive to avoid one frame delay */
+-		writel(dma_updated_top, gdp->regs + GAM_GDP_NVN_OFFSET);
++		writel(dma_updated_top, gdp->regs + GAM_OFFSET(NVN, gdp->type));
+ 	}
+ 
+ end:
+@@ -914,7 +965,7 @@ static const struct drm_plane_funcs sti_gdp_plane_helpers_funcs = {
+ };
+ 
+ struct drm_plane *sti_gdp_create(struct drm_device *drm_dev,
+-				 struct device *dev, int desc,
++				 struct device *dev, enum sti_gdp_type gdp_type, int desc,
+ 				 void __iomem *baseaddr,
+ 				 unsigned int possible_crtcs,
+ 				 enum drm_plane_type type)
+@@ -932,6 +983,7 @@ struct drm_plane *sti_gdp_create(struct drm_device *drm_dev,
+ 	gdp->regs = baseaddr;
+ 	gdp->plane.desc = desc;
+ 	gdp->plane.status = STI_PLANE_DISABLED;
++	gdp->type = gdp_type;
+ 
+ 	gdp->vtg_field_nb.notifier_call = sti_gdp_field_cb;
+ 
+diff --git a/drivers/gpu/drm/sti/sti_gdp.h b/drivers/gpu/drm/sti/sti_gdp.h
+index deb07e34173d..b1f06a0c5c37 100644
+--- a/drivers/gpu/drm/sti/sti_gdp.h
++++ b/drivers/gpu/drm/sti/sti_gdp.h
+@@ -16,8 +16,14 @@
+ struct drm_device;
+ struct device;
+ 
++enum sti_gdp_type {
++	STI_GDP_TYPE_GDP,
++	STI_GDP_TYPE_GDPPLUS,
++};
++
+ struct drm_plane *sti_gdp_create(struct drm_device *drm_dev,
+-				 struct device *dev, int desc,
++				 struct device *dev, enum sti_gdp_type gdp_type,
++				 int desc,
+ 				 void __iomem *baseaddr,
+ 				 unsigned int possible_crtcs,
+ 				 enum drm_plane_type type);
+-- 
+2.41.0
+
+From 75d933e464aa842e68450a2dc7b8e0730bea9396 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:34 +0000
+Subject: [PATCH 10/17] drm/sti: add compositor support for stih418 platform
+
+On the STiH418, a new clock (proc_mixer) must be enabled in order
+to have the plane mixers properly behaving.  Add a new
+st,stih418-compositor in order to describe the planes/mixers
+available on this platform.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ drivers/gpu/drm/sti/sti_compositor.c | 26 ++++++++++++++++++++++++++
+ drivers/gpu/drm/sti/sti_compositor.h |  2 ++
+ drivers/gpu/drm/sti/sti_crtc.c       | 11 +++++++++++
+ 3 files changed, 39 insertions(+)
+
+diff --git a/drivers/gpu/drm/sti/sti_compositor.c b/drivers/gpu/drm/sti/sti_compositor.c
+index 377684661b02..9e5ea7b3a9b9 100644
+--- a/drivers/gpu/drm/sti/sti_compositor.c
++++ b/drivers/gpu/drm/sti/sti_compositor.c
+@@ -43,6 +43,23 @@ static const struct sti_compositor_data stih407_compositor_data = {
+ 	},
+ };
+ 
++/*
++ * stiH418 compositor properties
++ */
++static const struct sti_compositor_data stih418_compositor_data = {
++	.nb_subdev = 8,
++	.subdev_desc = {
++			{STI_GPDPLUS_SUBDEV, (int)STI_GDP_0, 0x00000},
++			{STI_GPDPLUS_SUBDEV, (int)STI_GDP_1, 0x10000},
++			{STI_GPDPLUS_SUBDEV, (int)STI_GDP_2, 0x20000},
++			{STI_GPDPLUS_SUBDEV, (int)STI_GDP_3, 0x30000},
++			{STI_GPD_SUBDEV, (int)STI_GDP_4, 0x40000},
++			{STI_GPD_SUBDEV, (int)STI_GDP_5, 0x50000},
++			{STI_MIXER_MAIN_SUBDEV, STI_MIXER_MAIN, 0x100000},
++			{STI_MIXER_AUX_SUBDEV, STI_MIXER_AUX, 0x110000},
++	},
++};
++
+ void sti_compositor_debugfs_init(struct sti_compositor *compo,
+ 				 struct drm_minor *minor)
+ {
+@@ -169,6 +186,9 @@ static const struct of_device_id compositor_of_match[] = {
+ 	{
+ 		.compatible = "st,stih407-compositor",
+ 		.data = &stih407_compositor_data,
++	}, {
++		.compatible = "st,stih418-compositor",
++		.data = &stih418_compositor_data,
+ 	}, {
+ 		/* end node */
+ 	}
+@@ -236,6 +256,12 @@ static int sti_compositor_probe(struct platform_device *pdev)
+ 		return PTR_ERR(compo->clk_pix_aux);
+ 	}
+ 
++	compo->clk_proc_mixer = devm_clk_get_optional(dev, "proc_mixer");
++	if (IS_ERR(compo->clk_proc_mixer)) {
++		DRM_ERROR("Cannot get proc_mixer clock\n");
++		return PTR_ERR(compo->clk_proc_mixer);
++	}
++
+ 	/* Get reset resources */
+ 	compo->rst_main = devm_reset_control_get_shared(dev, "compo-main");
+ 	/* Take compo main out of reset */
+diff --git a/drivers/gpu/drm/sti/sti_compositor.h b/drivers/gpu/drm/sti/sti_compositor.h
+index 62545210b96d..fdc655f78579 100644
+--- a/drivers/gpu/drm/sti/sti_compositor.h
++++ b/drivers/gpu/drm/sti/sti_compositor.h
+@@ -57,6 +57,7 @@ struct sti_compositor_data {
+  * @clk_compo_aux: clock for aux compo
+  * @clk_pix_main: pixel clock for main path
+  * @clk_pix_aux: pixel clock for aux path
++ * @clk_proc_mixer: clock for the mixers
+  * @rst_main: reset control of the main path
+  * @rst_aux: reset control of the aux path
+  * @mixer: array of mixers
+@@ -72,6 +73,7 @@ struct sti_compositor {
+ 	struct clk *clk_compo_aux;
+ 	struct clk *clk_pix_main;
+ 	struct clk *clk_pix_aux;
++	struct clk *clk_proc_mixer;
+ 	struct reset_control *rst_main;
+ 	struct reset_control *rst_aux;
+ 	struct sti_mixer *mixer[STI_MAX_MIXER];
+diff --git a/drivers/gpu/drm/sti/sti_crtc.c b/drivers/gpu/drm/sti/sti_crtc.c
+index 3c7154f2d5f3..d93764e99b0e 100644
+--- a/drivers/gpu/drm/sti/sti_crtc.c
++++ b/drivers/gpu/drm/sti/sti_crtc.c
+@@ -67,6 +67,12 @@ sti_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ 		pix_clk = compo->clk_pix_aux;
+ 	}
+ 
++	/* Enable the mixer processing clock (if applicable) */
++	if (clk_prepare_enable(compo->clk_proc_mixer)) {
++		DRM_INFO("Failed to prepare/enable processing mixer clk\n");
++		goto proc_mixer_error;
++	}
++
+ 	/* Prepare and enable the compo IP clock */
+ 	if (clk_prepare_enable(compo_clk)) {
+ 		DRM_INFO("Failed to prepare/enable compositor clk\n");
+@@ -97,6 +103,8 @@ sti_crtc_mode_set(struct drm_crtc *crtc, struct drm_display_mode *mode)
+ pix_error:
+ 	clk_disable_unprepare(compo_clk);
+ compo_error:
++	clk_disable_unprepare(compo->clk_proc_mixer);
++proc_mixer_error:
+ 	return -EINVAL;
+ }
+ 
+@@ -122,6 +130,9 @@ static void sti_crtc_disable(struct drm_crtc *crtc)
+ 		clk_disable_unprepare(compo->clk_compo_aux);
+ 	}
+ 
++	/* Disable the mixer clock (if applicable) */
++	clk_disable_unprepare(compo->clk_proc_mixer);
++
+ 	mixer->status = STI_MIXER_DISABLED;
+ }
+ 
+-- 
+2.41.0
+
+From 1b4f5007f773e5a7e2f98dbb692eca5c8a40aea0 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:35 +0000
+Subject: [PATCH 11/17] ARM: dts: sti: move vtg_main / vtg_aux into
+ stih407/stih410 dtsi
+
+In preparation of introduction of display support in stih418, move
+the vtg nodes into stih407.dtsi and stih410.dtsi since vtg nodes
+will differ in case of the stih418 and thus cannot be kept as part
+of the stih407-family.dtsi.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih407-family.dtsi | 13 -------------
+ arch/arm/boot/dts/st/stih407.dtsi        | 12 ++++++++++++
+ arch/arm/boot/dts/st/stih410.dtsi        | 12 ++++++++++++
+ 3 files changed, 24 insertions(+), 13 deletions(-)
+
+diff --git a/arch/arm/boot/dts/st/stih407-family.dtsi b/arch/arm/boot/dts/st/stih407-family.dtsi
+index 600fc0d4f737..e72e274b21a6 100644
+--- a/arch/arm/boot/dts/st/stih407-family.dtsi
++++ b/arch/arm/boot/dts/st/stih407-family.dtsi
+@@ -294,19 +294,6 @@ syscfg_lpm: lpm-syscfg@94b5100 {
+ 			reg = <0x94b5100 0x1000>;
+ 		};
+ 
+-		/* Display */
+-		vtg_main: sti-vtg-main@8d02800 {
+-			compatible = "st,vtg";
+-			reg = <0x8d02800 0x200>;
+-			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
+-		};
+-
+-		vtg_aux: sti-vtg-aux@8d00200 {
+-			compatible = "st,vtg";
+-			reg = <0x8d00200 0x100>;
+-			interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
+-		};
+-
+ 		serial@9830000 {
+ 			compatible = "st,asc";
+ 			reg = <0x9830000 0x2c>;
+diff --git a/arch/arm/boot/dts/st/stih407.dtsi b/arch/arm/boot/dts/st/stih407.dtsi
+index aca43d2bdaad..69430556edc4 100644
+--- a/arch/arm/boot/dts/st/stih407.dtsi
++++ b/arch/arm/boot/dts/st/stih407.dtsi
+@@ -8,6 +8,18 @@
+ #include <dt-bindings/gpio/gpio.h>
+ / {
+ 	soc {
++		vtg_main: sti-vtg-main@8d02800 {
++			compatible = "st,vtg";
++			reg = <0x8d02800 0x200>;
++			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		vtg_aux: sti-vtg-aux@8d00200 {
++			compatible = "st,vtg";
++			reg = <0x8d00200 0x100>;
++			interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
+ 		sti-display-subsystem@0 {
+ 			compatible = "st,sti-display-subsystem";
+ 			#address-cells = <1>;
+diff --git a/arch/arm/boot/dts/st/stih410.dtsi b/arch/arm/boot/dts/st/stih410.dtsi
+index 29e95e9d3229..141db3dcaf1f 100644
+--- a/arch/arm/boot/dts/st/stih410.dtsi
++++ b/arch/arm/boot/dts/st/stih410.dtsi
+@@ -99,6 +99,18 @@ ehci1: usb@9a83e00 {
+ 			status = "disabled";
+ 		};
+ 
++		vtg_main: sti-vtg-main@8d02800 {
++			compatible = "st,vtg";
++			reg = <0x8d02800 0x200>;
++			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		vtg_aux: sti-vtg-aux@8d00200 {
++			compatible = "st,vtg";
++			reg = <0x8d00200 0x100>;
++			interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
+ 		sti-display-subsystem@0 {
+ 			compatible = "st,sti-display-subsystem";
+ 			#address-cells = <1>;
+-- 
+2.41.0
+
+From 2b1688794f999d4d236b021bb4fa5e196b9dcb58 Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:36 +0000
+Subject: [PATCH 12/17] ARM: dts: sti: addition of display nodes for stih418
+ platform
+
+Addition of a first set of nodes (compositor/tvout/hdmi/dvo) in order
+to allow graphic plane usage via HDMI or DVO on the stih418 based boards.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih418-clock.dtsi |   2 +-
+ arch/arm/boot/dts/st/stih418.dtsi       | 154 ++++++++++++++++++++++++
+ 2 files changed, 155 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/st/stih418-clock.dtsi b/arch/arm/boot/dts/st/stih418-clock.dtsi
+index e1749e92a2e7..93641df58bf2 100644
+--- a/arch/arm/boot/dts/st/stih418-clock.dtsi
++++ b/arch/arm/boot/dts/st/stih418-clock.dtsi
+@@ -17,7 +17,7 @@ clk_sysin: clk-sysin {
+ 	clk_tmdsout_hdmi: clk-tmdsout-hdmi {
+ 		#clock-cells = <0>;
+ 		compatible = "fixed-clock";
+-		clock-frequency = <0>;
++		clock-frequency = <594000000>;
+ 	};
+ 
+ 	clocks {
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index a1c325e3a6ee..c111db9fef35 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -6,6 +6,7 @@
+ #include "stih418-clock.dtsi"
+ #include "stih407-family.dtsi"
+ #include "stih410-pinctrl.dtsi"
++#include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/thermal/thermal.h>
+ / {
+ 	cpus {
+@@ -154,5 +155,158 @@ thermal: thermal@91a0000 {
+ 			interrupts = <GIC_SPI 205 IRQ_TYPE_EDGE_RISING>;
+ 			#thermal-sensor-cells = <0>;
+ 		};
++
++		sti-display-subsystem@0 {
++			compatible = "st,sti-display-subsystem";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			reg = <0 0>;
++			assigned-clocks = <&clk_s_d2_quadfs 0>,
++					  <&clk_s_d2_quadfs 1>,
++					  <&clk_s_d2_flexgen CLK_TMDS_HDMI_DIV2>,
++					  <&clk_s_d2_flexgen CLK_TMDS_HDMI>,
++					  <&clk_s_d2_flexgen CLK_PIX_MAIN_DISP>,
++					  <&clk_s_d2_flexgen CLK_PIX_AUX_DISP>,
++					  <&clk_s_c0_flexgen CLK_MAIN_DISP>,
++					  <&clk_s_c0_flexgen CLK_AUX_DISP>,
++					  <&clk_s_c0_flexgen CLK_COMPO_DVP>,
++					  <&clk_s_c0_flexgen CLK_PROC_MIXER>;
++
++			assigned-clock-parents = <0>,
++						 <0>,
++						 <&clk_tmdsout_hdmi>,
++						 <&clk_tmdsout_hdmi>,
++						 <&clk_s_d2_quadfs 0>,
++						 <&clk_s_d2_quadfs 1>,
++						 <&clk_s_c0_pll1 0>,
++						 <&clk_s_c0_pll1 0>,
++						 <&clk_s_c0_pll0 0>,
++						 <&clk_s_c0_pll0 0>;
++
++			assigned-clock-rates = <297000000>,
++					       <108000000>,
++					       <297000000>,
++					       <0>,
++					       <74250000>,
++					       <13500000>,
++					       <400000000>,
++					       <400000000>,
++					       <355000000>,
++					       <355000000>;
++
++			ranges;
++
++			sti_compo: sti-compositor@a600000 {
++				compatible = "st,stih418-compositor";
++				reg = <0xa600000 0x200000>;
++
++				clock-names = "compo_main",
++					      "compo_aux",
++					      "pix_main",
++					      "pix_aux",
++					      "proc_mixer";
++
++				clocks = <&clk_s_c0_flexgen CLK_COMPO_DVP>,
++					 <&clk_s_c0_flexgen CLK_COMPO_DVP>,
++					 <&clk_s_d2_flexgen CLK_PIX_MAIN_DISP>,
++					 <&clk_s_d2_flexgen CLK_PIX_AUX_DISP>,
++					 <&clk_s_c0_flexgen CLK_PROC_MIXER>;
++
++				reset-names = "compo-main", "compo-aux";
++				resets = <&softreset STIH407_COMPO_SOFTRESET>,
++					 <&softreset STIH407_COMPO_SOFTRESET>;
++				st,vtg = <&vtg_main>, <&vtg_aux>;
++
++				status = "disabled";
++			};
++
++			sti_tvout: sti-tvout@a900000 {
++				compatible = "st,stih418-tvout";
++				reg = <0xa900000 0x1000>;
++				reg-names = "tvout-reg";
++				reset-names = "tvout";
++				resets = <&softreset STIH407_HDTVOUT_SOFTRESET>;
++				#address-cells = <1>;
++				#size-cells = <1>;
++				assigned-clocks = <&clk_s_d2_flexgen CLK_PIX_HDMI>,
++						  <&clk_s_d2_flexgen CLK_TMDS_HDMI>,
++						  <&clk_s_d2_flexgen CLK_REF_HDMIPHY>,
++						  <&clk_s_d0_flexgen CLK_PCM_0>,
++						  <&clk_s_d2_flexgen CLK_PIX_HDDAC>,
++						  <&clk_s_d2_flexgen CLK_HDDAC>;
++
++				assigned-clock-parents = <&clk_s_d2_quadfs 0>,
++							 <&clk_tmdsout_hdmi>,
++							 <&clk_s_d2_quadfs 0>,
++							 <&clk_s_d0_quadfs 0>,
++							 <&clk_s_d2_quadfs 0>,
++							 <&clk_s_d2_quadfs 0>;
++				assigned-clock-rates = <74250000>,
++						       <0>,
++						       <74250000>,
++						       <0>,
++						       <74250000>,
++						       <148500000>;
++
++				status = "disabled";
++			};
++
++			sti_dvo: sti-dvo@a800400 {
++				compatible = "st,stih407-dvo";
++				reg = <0xa800400 0x200>;
++				reg-names = "dvo-reg";
++				clock-names = "dvo_pix", "dvo",
++					      "main_parent", "aux_parent";
++				clocks = <&clk_s_d2_flexgen CLK_PIX_DVO>,
++					 <&clk_s_d2_flexgen CLK_DVO>,
++					 <&clk_s_d2_quadfs 0>, <&clk_s_d2_quadfs 1>;
++				status = "disabled";
++			};
++
++			sti_hdmi: sti-hdmi@a804000 {
++				compatible = "st,stih418-hdmi";
++				reg = <0xa804000 0x1000>;
++				reg-names = "hdmi-reg";
++				#sound-dai-cells = <0>;
++				interrupts = <GIC_SPI 106 IRQ_TYPE_LEVEL_HIGH>;
++				interrupt-names = "irq";
++				clock-names = "pix",
++					      "tmds",
++					      "phy",
++					      "audio",
++					      "main_parent",
++					      "aux_parent";
++
++				clocks = <&clk_s_d2_flexgen CLK_PIX_HDMI>,
++					 <&clk_s_d2_flexgen CLK_TMDS_HDMI>,
++					 <&clk_s_d2_flexgen CLK_REF_HDMIPHY>,
++					 <&clk_s_d0_flexgen CLK_PCM_0>,
++					 <&clk_s_d2_quadfs 0>,
++					 <&clk_s_d2_quadfs 1>;
++
++				hdmi,hpd-gpio = <&pio5 3 GPIO_ACTIVE_LOW>;
++				reset-names = "hdmi";
++				resets = <&softreset STIH407_HDMI_TX_PHY_SOFTRESET>;
++
++				status = "disabled";
++			};
++		};
++
++		vtg_main: sti-vtg-main@a802800 {
++			compatible = "st,stih418-vtg";
++			reg = <0xa802800 0x200>;
++			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
++
++			status = "disabled";
++		};
++
++		vtg_aux: sti-vtg-aux@a800200 {
++			compatible = "st,stih418-vtg";
++			reg = <0xa800200 0x100>;
++			interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
++
++			status = "disabled";
++		};
+ 	};
+ };
+-- 
+2.41.0
+
+From b53fe7ec0f40eb293803d1e1ad29376cb2bdf14d Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:37 +0000
+Subject: [PATCH 13/17] ARM: dts: sti: add the gpu node for the MALI-400 on
+ stih418.dtsi
+
+Add the gpu node for the MALI-400 found on stih418 soc.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih418.dtsi | 34 +++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index c111db9fef35..2208f39e551e 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -308,5 +308,39 @@ vtg_aux: sti-vtg-aux@a800200 {
+ 
+ 			status = "disabled";
+ 		};
++
++		gpu: gpu@9f00000 {
++			compatible = "arm,mali-400";
++			reg = <0x9f00000 0x10000>;
++			/* LIMA driver needs 2 clocks, use the same for both */
++			clocks = <&clk_s_c0_flexgen CLK_ICN_GPU>,
++				 <&clk_s_c0_flexgen CLK_ICN_GPU>;
++			clock-names = "bus", "core";
++			assigned-clocks = <&clk_s_c0_flexgen CLK_ICN_GPU>;
++			assigned-clock-rates = <400000000>;
++			resets = <&softreset STIH407_GPU_SOFTRESET>;
++			interrupts = <GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 50 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 45 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 43 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 47 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 48 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "gp",
++					  "gpmmu",
++					  "pp0",
++					  "ppmmu0",
++					  "pp1",
++					  "ppmmu1",
++					  "pp2",
++					  "ppmmu2",
++					  "pp3",
++					  "ppmmu3";
++
++			status = "disabled";
++		};
+ 	};
+ };
+-- 
+2.41.0
+
+From 897d2187f29c97994d5095783512b09ef845d24c Mon Sep 17 00:00:00 2001
+From: Alain Volmat <avolmat@me.com>
+Date: Thu, 27 Jul 2023 21:51:38 +0000
+Subject: [PATCH 14/17] ARM: dts: sti: enable basic display on stih418-b2264
+ board
+
+Enable the compositor, tvout, hdmi and gpu on the B2264 board.
+
+Signed-off-by: Alain Volmat <avolmat@me.com>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 34 ++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 2765903a0279..3bf030427efd 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -116,6 +116,14 @@ st,pins {
+ 			};
+ 		};
+ 
++		hdmiddc: i2c@9541000 {
++			/* HDMI V1.3a supports Standard mode only */
++			clock-frequency = <100000>;
++			st,i2c-min-scl-pulse-width-us = <0>;
++			st,i2c-min-sda-pulse-width-us = <5>;
++
++			status = "okay";
++		};
+ 	};
+ };
+ 
+@@ -213,6 +221,32 @@ &st_dwc3 {
+ 	status = "okay";
+ };
+ 
++&sti_compo {
++	status = "okay";
++};
++
++&sti_tvout {
++	status = "okay";
++};
++
++&sti_hdmi {
++	ddc = <&hdmiddc>;
++
++	status = "okay";
++};
++
++&vtg_main {
++	status = "okay";
++};
++
++&vtg_aux {
++	status = "okay";
++};
++
++&gpu {
++	status = "okay";
++};
++
+ &sti_uni_player2 {
+ 	status = "okay";
+ };
+-- 
+2.41.0
+
+From f620df150507b3b74feb1ef50555512e53457f2f Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Wed, 10 May 2023 23:24:34 +0200
+Subject: [PATCH 15/17] ARM: dts: sti: enable HDMI audio output on
+ stih418-b2264
+
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 3bf030427efd..6b52e9e9385e 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -91,6 +91,21 @@ codec {
+ 				sound-dai = <&sti_sasg_codec 1>;
+ 			};
+ 		};
++
++		simple-audio-card,dai-link@1 {
++			reg = <1>;
++			/* HDMI */
++			format = "i2s";
++			mclk-fs = <128>;
++			cpu {
++				sound-dai = <&sti_uni_player0>;
++			};
++
++			codec {
++				sound-dai = <&sti_hdmi>;
++			};
++		};
++
+ 	};
+ 
+ 	soc {
+@@ -247,6 +262,10 @@ &gpu {
+ 	status = "okay";
+ };
+ 
++&sti_uni_player0 {
++	status = "okay";
++};
++
+ &sti_uni_player2 {
+ 	status = "okay";
+ };
+-- 
+2.41.0
+
+From 6285a514a328b1ac752855dfe116d99312537693 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Wed, 17 May 2023 23:18:50 +0200
+Subject: [PATCH 16/17] ARM: dts: sti: add STi-CEC node on stih418.dtsi
+
+Signed-off-by: Jerome Audu <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih418.dtsi | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418.dtsi b/arch/arm/boot/dts/st/stih418.dtsi
+index 2208f39e551e..3287f5935fd4 100644
+--- a/arch/arm/boot/dts/st/stih418.dtsi
++++ b/arch/arm/boot/dts/st/stih418.dtsi
+@@ -309,6 +309,19 @@ vtg_aux: sti-vtg-aux@a800200 {
+ 			status = "disabled";
+ 		};
+ 
++		cec: cec@94a087c {
++			compatible = "st,stih-cec";
++			reg = <0x94a087c 0x64>;
++			clocks = <&clk_sysin>;
++			clock-names = "cec-clk";
++			interrupts = <GIC_SPI 140 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "cec-irq";
++			pinctrl-names = "default";
++			pinctrl-0 = <&pinctrl_cec0_default>;
++			resets = <&softreset STIH407_LPM_SOFTRESET>;
++			hdmi-phandle = <&sti_hdmi>;
++		};
++
+ 		gpu: gpu@9f00000 {
+ 			compatible = "arm,mali-400";
+ 			reg = <0x9f00000 0x10000>;
+-- 
+2.41.0
+
+From e485a80d7a7c3ea6046f557cfdc1f8850ecf7321 Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Thu, 18 May 2023 00:13:23 +0200
+Subject: [PATCH 17/17] ARM: dts: sti: enable STi-CEC on stih418-b2264
+
+Signed-off-by: Jerome Audu <jau@free.fr>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index 6b52e9e9385e..f2bf757e3f5d 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -258,6 +258,10 @@ &vtg_aux {
+ 	status = "okay";
+ };
+ 
++&cec {
++	status = "okay";
++};
++
+ &gpu {
+ 	status = "okay";
+ };
+-- 
+2.41.0
+
