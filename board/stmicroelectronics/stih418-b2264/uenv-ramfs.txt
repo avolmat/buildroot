@@ -1,0 +1,14 @@
+# Memory map
+uimage_addr=0x94000000
+dtb_addr=0x94f00000
+ramfs_addr=0x95000000
+
+# Kernel bootargs
+set_ramfs_addr_offset=setexpr ramfs_addr_offset $ramfs_addr + 0x40; setenv ramfs_addr_offset 0x${ramfs_addr_offset}
+set_bootargs=run set_ramfs_addr_offset; setenv bootargs console=ttyAS0,115200 loglevel=7 earlyprintk quiet root=/dev/ram0 rw initrd=${ramfs_addr_offset},0x${ramfs_size}
+
+# Load uImage and device tree
+load_all=fatload mmc 0:1 $uimage_addr uimage && fatload mmc 0:1 $dtb_addr devicetree.dtb && fatload mmc 0:1 $ramfs_addr uramdisk.image.gz && setenv ramfs_size $filesize
+
+# Boot
+bootcmd=run load_all && run set_bootargs && echo "booting using: " $bootargs && bootm $uimage_addr $ramfs_addr $dtb_addr
