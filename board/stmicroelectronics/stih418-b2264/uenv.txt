@@ -1,0 +1,13 @@
+# Memory map
+uimage_addr=0x94000000
+dtb_addr=0x94f00000
+ramfs_addr=0x95000000
+
+# Kernel bootargs
+bootargs=console=ttyAS0,115200 loglevel=7 earlyprintk quiet root=/dev/mmcblk0p2 rootwait
+
+# Load uImage and device tree
+load_all=fatload mmc 0:1 $uimage_addr uimage && fatload mmc 0:1 $dtb_addr devicetree.dtb
+
+# Boot
+bootcmd=run load_all && echo "booting using: " $bootargs && bootm $uimage_addr - $dtb_addr
