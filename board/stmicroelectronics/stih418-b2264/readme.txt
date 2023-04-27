@@ -27,8 +27,8 @@ Copy the bootable "sdcard.img" onto an microSD card with "dd":
 Or simply put "uImage", "stih418-b2264-box.dtb", "rootfs.cpio.uboot"
 on USB FAT partition.
 
-Boot the board
-==============
+Boot the board from RAMFS
+=========================
 
  (1) Insert the microSD card or USB into USB3 port
 
@@ -48,6 +48,20 @@ Boot the board
 	  initrd=0x95000040,0x${filesize}"; bootm 0x94000000 0x95000000 0x94f00000'
 
  (3) from u-boot console "run buildroot"
+
+Boot the board from rootfs as 2nd partition
+===========================================
+
+ (1) Create a 2nd partition on µSD (ext4)
+     then extract rootfs from output/images/rootfs.tar
+
+ (2) From u-boot console (once, then type "saveenv")
+     µSD: setenv buildroot_ext4 'mmc rescan; fatload mmc 0:1 0x94000000 uimage; \
+          fatload mmc 0:1 0x94f00000 devicetree.dtb; \
+          setenv bootargs "console=ttyAS0,115200 loglevel=7 earlyprintk \
+          quiet root=/dev/mmcblk0p2 rootwait"; bootm 0x94000000 - 0x94f00000'
+
+ (3) from u-boot console "run buildroot_ext4"
 
 FIXME
 =====
