@@ -23,14 +23,12 @@ SUPERTUXKART_DEPENDENCIES = \
 	harfbuzz \
 	jpeg \
 	libcurl \
-	libgl \
 	libogg \
 	libpng \
 	libsquish \
 	libvorbis \
 	openal \
 	sdl2 \
-	xlib_libXrandr \
 	zlib
 
 # Since supertuxkart is not installing libstkirrlicht.so, and since it is
