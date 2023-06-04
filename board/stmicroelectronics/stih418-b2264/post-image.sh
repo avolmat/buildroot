@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eux
+
 BOARD_DIR=$(dirname "$0")
 
 # By default U-Boot loads DTB from a file named "devicetree.dtb", so
@@ -15,5 +17,13 @@ FIRST_DT=$(sed -n \
 RAMFS=""; [ -z "$(grep -E ^BR2_TARGET_ROOTFS_CPIO_UIMAGE=y ${BR2_CONFIG})" ] || RAMFS="-ramfs"
 
 cp -f "${BOARD_DIR}/uenv${RAMFS}.txt" "${BINARIES_DIR}/uenv.txt"
+
+# Mount /boot
+if [ -e "${TARGET_DIR}/etc/fstab" ]; then
+	mkdir -p "${TARGET_DIR}/boot" && touch "${TARGET_DIR}/boot/.keep"
+	FSTAB="${TARGET_DIR}/etc/fstab"
+	APPEND='/dev/mmcblk0p1 /boot vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=iso8859-1,shortname=mixed,utf8,errors=remount-ro 0 0'
+	grep -qxF "$APPEND" "$FSTAB" || echo "$APPEND" >> "$FSTAB"
+fi
 
 support/scripts/genimage.sh -c board/stmicroelectronics/stih418-b2264/genimage${RAMFS}.cfg
