@@ -27,7 +27,8 @@ MPV_CONF_OPTS = \
 	--disable-opensles \
 	--disable-rubberband \
 	--disable-uchardet \
-	--disable-vapoursynth
+	--disable-vapoursynth \
+	--disable-sdl2-gamepad
 
 ifeq ($(BR2_REPRODUCIBLE),y)
 MPV_CONF_OPTS += --disable-build-date

@@ -105,7 +105,8 @@ endef
 NODEJS_HOST_TOOLS_V8 = \
 	torque \
 	gen-regexp-special-case \
-	bytecode_builtins_list_generator
+	bytecode_builtins_list_generator \
+	mksnapshot
 NODEJS_HOST_TOOLS_NODE = mkcodecache
 NODEJS_HOST_TOOLS = $(NODEJS_HOST_TOOLS_V8) $(NODEJS_HOST_TOOLS_NODE)
 

@@ -13,6 +13,7 @@ BLUEZ5_UTILS_LICENSE = GPL-2.0+, LGPL-2.1+
 BLUEZ5_UTILS_LICENSE_FILES = COPYING COPYING.LIB
 BLUEZ5_UTILS_CPE_ID_VENDOR = bluez
 BLUEZ5_UTILS_CPE_ID_PRODUCT = bluez
+BLUEZ5_UTILS_AUTORECONF = YES
 
 BLUEZ5_UTILS_DEPENDENCIES = \
 	$(if $(BR2_PACKAGE_BLUEZ5_UTILS_HEADERS),bluez5_utils-headers) \
@@ -27,6 +28,7 @@ BLUEZ5_UTILS_CONF_OPTS = \
 	--disable-lsan \
 	--disable-ubsan \
 	--disable-pie \
+	--localstatedir=/overlay/.configs/ \
 	--with-dbusconfdir=/etc
 
 ifeq ($(BR2_PACKAGE_BLUEZ5_UTILS_OBEX),y)
@@ -187,5 +189,13 @@ define BLUEZ5_UTILS_INSTALL_INIT_SYSV
 	$(INSTALL) -m 0755 -D package/bluez5_utils/S40bluetooth \
 		$(TARGET_DIR)/etc/init.d/S40bluetooth
 endef
+
+define BLUEZ5_UTILS_INSTALL_CONF_FILES
+	mkdir -p $(TARGET_DIR)/etc/bluetooth
+	for i in `find $(@D) -name *.conf` ; do \
+		$(INSTALL) -D -m 755 $$i $(TARGET_DIR)/etc/bluetooth/ ; \
+	done
+endef
+BLUEZ5_UTILS_POST_INSTALL_TARGET_HOOKS += BLUEZ5_UTILS_INSTALL_CONF_FILES
 
 $(eval $(autotools-package))

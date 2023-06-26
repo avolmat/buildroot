@@ -56,7 +56,7 @@ endef
 ifeq ($(BR2_PACKAGE_NETWORK_MANAGER),)
 define DHCPCD_INSTALL_INIT_SYSV
 	$(INSTALL) -m 755 -D package/dhcpcd/S41dhcpcd \
-		$(TARGET_DIR)/etc/init.d/S41dhcpcd
+		$(TARGET_DIR)/etc/init.d/S10dhcpcd
 endef
 
 define DHCPCD_INSTALL_INIT_SYSTEMD

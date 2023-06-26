@@ -60,6 +60,18 @@ FFMPEG_CONF_OPTS = \
 
 FFMPEG_DEPENDENCIES += host-pkgconf
 
+# this is needed for hevc decoder to work
+# for rpi4, we need a patched version of ffmpeg
+ifeq ($(BR2_PACKAGE_RECALBOX_TARGET_RPI4_64),y)
+FFMPEG_CONF_OPTS += --enable-v4l2_m2m --enable-sand --enable-v4l2-request
+FFMPEG_DEPENDENCIES += udev
+endif
+
+ifeq ($(BR2_PACKAGE_ROCKCHIP_MPP),y)
+FFMPEG_CONF_OPTS += --enable-rkmpp --enable-libdrm --enable-version3
+FFMPEG_DEPENDENCIES += rockchip-mpp
+endif
+
 ifeq ($(BR2_PACKAGE_FFMPEG_GPL),y)
 FFMPEG_CONF_OPTS += --enable-gpl
 else

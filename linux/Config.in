@@ -436,6 +436,13 @@ config BR2_LINUX_KERNEL_DTB_OVERLAY_SUPPORT
 
 endif
 
+config BR2_LINUX_KERNEL_DTS_INSTALL_OVERLAYS
+	bool "Build and install Device Tree Overlays (dtbo)"
+	depends on BR2_LINUX_KERNEL_DTS_SUPPORT
+	help
+	  Build in-tree device tree overlays.
+	  Currently supports Raspberry Pi kernels.
+
 config BR2_LINUX_KERNEL_INSTALL_TARGET
 	bool "Install kernel image to /boot in target"
 	depends on !BR2_TARGET_ROOTFS_INITRAMFS

@@ -15,11 +15,11 @@ SDL2_INSTALL_STAGING = YES
 SDL2_CONFIG_SCRIPTS = sdl2-config
 
 SDL2_CONF_OPTS += \
+	--disable-hidapi \
 	--disable-rpath \
 	--disable-arts \
 	--disable-esd \
 	--disable-dbus \
-	--disable-pulseaudio \
 	--disable-video-wayland
 
 # We are using autotools build system for sdl2, so the sdl2-config.cmake
@@ -33,6 +33,10 @@ define SDL2_FIX_SDL2_CONFIG_CMAKE
 		$(STAGING_DIR)/usr/lib/cmake/SDL2/sdl2-config.cmake
 endef
 SDL2_POST_INSTALL_STAGING_HOOKS += SDL2_FIX_SDL2_CONFIG_CMAKE
+define SDL2_RUN_AUTOGEN
+	$(@D)/autogen.sh
+endef
+SDL2_PRE_CONFIGURE_HOOKS += SDL2_RUN_AUTOGEN
 
 # We must enable static build to get compilation successful.
 SDL2_CONF_OPTS += --enable-static
@@ -157,11 +161,29 @@ else
 SDL2_CONF_OPTS += --disable-alsa
 endif
 
+ifeq ($(BR2_PACKAGE_PULSEAUDIO),y)
+SDL2_DEPENDENCIES += pulseaudio
+SDL2_CONF_OPTS += --enable-pulseaudio
+else
+SDL2_CONF_OPTS += --disable-pulseaudio
+endif
+
 ifeq ($(BR2_PACKAGE_SDL2_KMSDRM),y)
-SDL2_DEPENDENCIES += libdrm mesa3d
+SDL2_DEPENDENCIES += libdrm libgbm
 SDL2_CONF_OPTS += --enable-video-kmsdrm
 else
 SDL2_CONF_OPTS += --disable-video-kmsdrm
+endif
+
+ifeq ($(BR2_PACKAGE_XSERVER_XORG_SERVER),)
+  ifeq ($(BR2_PACKAGE_MESA3D_OPENGL_EGL),y)
+    TARGET_CFLAGS += -DEGL_NO_X11
+  endif
+endif
+
+# odroid go advance
+ifeq ($(BR2_PACKAGE_LIBRGA),y)
+SDL2_DEPENDENCIES += librga
 endif
 
 $(eval $(autotools-package))

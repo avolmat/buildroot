@@ -35,4 +35,8 @@ else
 X265_CONF_OPTS += -DENABLE_CLI=OFF
 endif
 
+ifeq ($(BR2_ARM_CPU_ARMV6),y)
+X265_CONF_OPTS += -DCROSS_COMPILE_ARM=1
+endif
+
 $(eval $(cmake-package))

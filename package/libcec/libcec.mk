@@ -24,6 +24,10 @@ ifeq ($(BR2_PACKAGE_PYTHON3),y)
 LIBCEC_DEPENDENCIES += host-swig python3
 endif
 
+ifeq ($(BR2_PACKAGE_RECALBOX_TARGET_ODROIDXU4),y)
+LIBCEC_CONF_OPTS += -DHAVE_EXYNOS_API=1
+endif
+
 ifeq ($(BR2_PACKAGE_RPI_USERLAND),y)
 LIBCEC_DEPENDENCIES += rpi-userland
 LIBCEC_CONF_OPTS += \
@@ -31,6 +35,8 @@ LIBCEC_CONF_OPTS += \
 	-DCMAKE_CXX_FLAGS="$(TARGET_CXXFLAGS) \
 		-I$(STAGING_DIR)/usr/include/interface/vmcs_host/linux \
 		-I$(STAGING_DIR)/usr/include/interface/vcos/pthreads"
+else
+LIBCEC_CONF_OPTS += -DHAVE_LINUX_API=1
 endif
 
 ifeq ($(BR2_PACKAGE_XLIB_LIBXRANDR),y)
