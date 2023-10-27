@@ -4,7 +4,7 @@ dtb_addr=0x94f00000
 ramfs_addr=0x95000000
 
 # Kernel bootargs
-bootargs=console=ttyAS0,115200 loglevel=7 earlyprintk quiet root=/dev/mmcblk0p2 rootwait
+bootargs=console=ttyAS0,115200 loglevel=7 earlyprintk quiet root=/dev/mmcblk0p2 rootwait clk_ignore_unused
 
 # Load uImage and device tree
 load_all=fatload mmc 0:1 $uimage_addr uimage && fatload mmc 0:1 $dtb_addr devicetree.dtb
