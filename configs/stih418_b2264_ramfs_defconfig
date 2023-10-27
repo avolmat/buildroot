@@ -12,6 +12,7 @@ BR2_SYSTEM_DHCP="eth0"
 BR2_TARGET_TZ_INFO=y
 BR2_TARGET_TZ_ZONELIST="europe"
 BR2_TARGET_LOCALTIME="Europe/Paris"
+BR2_ROOTFS_OVERLAY="board/stmicroelectronics/stih418-b2264/rootfs_overlay"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="board/stmicroelectronics/stih418-b2264/post-image.sh"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
