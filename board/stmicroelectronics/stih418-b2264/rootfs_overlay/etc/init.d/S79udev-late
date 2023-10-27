@@ -1,0 +1,26 @@
+#! /bin/sh
+
+start() {
+
+	# WA 4kopen, finish loading sti-display and sti-vtg-*
+	devices=$(udevadm trigger --attr-match=subsystem=platform -v --dry-run | grep -E 'sti-display|sti-vtg')
+	for i in $devices ; do echo "add" > $i/uevent; done
+
+	udevadm settle --timeout=30 || echo "udevadm settle failed"
+
+	# Workarround HDMI
+	hdmi=$(ls -1 /sys/class/drm/card[0-9]-HDMI-A-1/status);
+	echo "off" > $hdmi
+	sleep 0.3; echo "on" > $hdmi
+}
+
+case "${1}" in
+	start|stop|restart)
+		"${1}";;
+	reload)
+		restart;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac
