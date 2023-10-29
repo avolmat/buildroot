@@ -241,7 +241,7 @@ if !BR2_PRIMARY_SITE_ONLY
 
 config BR2_BACKUP_SITE
 	string "Backup download site"
-	default "http://sources.buildroot.net"
+	default "https://sources.buildroot.net"
 	help
 	  Backup site to download from. If this option is set then
 	  buildroot will fall back to download package sources from here
@@ -735,6 +735,20 @@ config BR2_PER_PACKAGE_DIRECTORIES
 	  packages behave properly with per-package directories.
 
 endmenu
+
+config BR2_TIME_BITS_64
+	bool "Build Y2038-ready code"
+	depends on BR2_TOOLCHAIN_USES_GLIBC && !BR2_ARCH_IS_64
+	help
+	  This option will pass -D_TIME_BITS=64 in the compiler flags
+	  to ensure the glibc C library uses a 64-bit representation
+	  for time_t and other time types, which ensures that
+	  programs/libraries will correctly handle time past year
+	  2038.
+
+	  This option only has an effect with glibc >= 2.34, as
+	  earlier glibc versions did not have support for 64-bit
+	  time_t.
 
 comment "Security Hardening Options"
 

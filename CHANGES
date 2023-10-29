@@ -1,3 +1,65 @@
+2023.08.2, released October 15th, 2023
+
+	Important / security related fixes.
+
+	Defconfigs: Freescale ARM: Add ATF patch to fix build issue
+	with binutils 2.39+.  QEMU Aarch64-virt: Enable ACPI support
+	for EDK2. Visionfive2: Bump kernel to fix build issue with GCC
+	13.
+
+	Per-package builds: Do not use hard links for host / target
+	dirs, fixing issues with package rebuilds or post-build
+	scripts modifications.
+
+	Infrastructure: Explicitly disable shuffle mode for Make >=
+	4.4 where needed.
+
+	Urandom-scripts: Move seedrng init script to S01 for earlier
+	random number entrophy initialization.
+
+	Updated/fixed packages: at91bootstrap, batman-adv, bind, cups,
+	efl, enlightenment, exim, gcc, glibc, gnu-efi, go, gptfdisk,
+	grub2, gst-omx, gst1-devtools, gst1-libav, gst1-plugins-bad,
+	gst1-plugins-base, gst1-plugins-good, gst1-plugins-ugly,
+	gst1-python, gst1-rstp-server, gst1-rtsp-vaapi, gstreamer1,
+	gstreamer1-editing-services, gtkmm3, libcue, libcurl,
+	libfastjson, libhtp, libmodplug, librsvg, libvpx, libyang,
+	linux-pam, linux-tools, mbedtls, mosquitto, mutt, neon,
+	netsnmp, nmap, nodejs, olsr, openblas, opkg-utils, php, pound,
+	powertop, python-mako, python3, rauc, rockchip-mali, samba4,
+	sslh, stress-ng, suricata, syslog-ng, systemd, tar, unifdef,
+	urandom-scripts, usbguard, webkitgtk, wilc-driver,
+	wireless-regdb, wpewebkit
+
+	Issues resolved (http://bugs.uclibc.org):
+
+	#15628: Missing dependencies in BR2_PACKAGE_PYTHON_MAKO
+	#15808: connman is not supported on musl
+	#15814: C++ not supported by bootlin toolchain
+
+2023.08.1, released September 27th, 2023
+
+	Important / security related fixes.
+
+	Updated/fixed packages: agentpp, asterisk, bind, binutils,
+	conmon, cpio, docker-cli, docker-engine, e2fsprogs, erlang,
+	esp-hosted, expect, fail2ban, fio, freerdp, fstrcmp, gcc, gdb,
+	ghostscript, go, haproxy, hwloc, icu, irssi, libcoap, libcurl,
+	libde265, libheif, libiec61850, libjxl, libopenssl, libpjsip,
+	libqb, libraw, libssh, libuv, lldpd, mdadm, mutt, ne10,
+	netatalk, nodejs, nut, openblas, opensc, openvpn, petitboot,
+	php, pound, pppd, python-pytest, python3, qt5,
+	rtl8812au-aircrack-ng, sngrep, stress-ng, strongswan, sysstat,
+	tar, tcl, timescaledb, util-linux, vim, webkitgtk, webp,
+	wireshark, xserver_xorg-server, xterm, zbar, zxing-cpp,
+	zynaddsubfx
+
+	Issues resolved (http://bugs.uclibc.org):
+
+	#14366: Nodejs fails with "version `GLIBC_2.34' not found"..
+	#15787: atmel_sama5d3_xplained_mmc_defconfig: Missing...
+	#15790: at91sam9x5ek_dev_defconfig: Missing...
+
 2023.08, released September 6th, 2023
 
 	Various fixes.
@@ -93,6 +155,35 @@
 	swugenerator
 
 	Removed packages: libasplib, ocf-linux, tovid
+
+2023.05.3, released September 26th, 2023
+
+	Important / security related fixes.
+
+	Defconfigs: PC x86-64 bios/efi: Needs libelf. Raspberrypi:
+	Also enable HDMI console when systemd is used.
+
+	Updated/fixed packages: agentpp, asterisk, at91dataflashboot,
+	aubio, berkeleydb, bind, bwm-ng, chocolate-doom, clamav,
+	compiler-rt, connman, cpio, cups, dav1d, diffutils, dracut,
+	dt, expect, fail2ban, fio, flite, freerdp, freeswitch,
+	fstrcmp, gcc, gdb, ghostscript, gmp, go, grub2, haproxy,
+	heirloom-mailx, hwloc, icu, intel-microcode, irssi, less,
+	libcoap, libcurl, libglib2, libiec61850, libjxl, libks,
+	libksba, libmodsecurity, libpjsip, libqb, libraw, libssh,
+	libtommath, lldpd, log4cxx, lsof, mdadm, mosquitto, mpd, mpv,
+	mutt, mv-ddr-marvell, ne10, netatalk, network-manager,
+	nftables, nodejs, ntpsec, nut, openblas, openjdk, openjdk-bin,
+	opensc, openssh, pcm-tools, perftest, petitboot, php, pixman,
+	poppler, postgresql, python-django, python-ipython,
+	python-pip, python-pylibfdt, python-tornado, python3, qt5,
+	ramspeed, rtl8189fs, rtl8812au-aircrack-ng, samba4, screen,
+	screenfetch, sngrep, sofia-sip, stellarium, stress-ng,
+	strongswan, sysstat, tar, tcl, uboot, uclibc, vim, webkitgtk,
+	webp, wireshark, xfsprogs, xserver_xorg-server, xterm, yajl,
+	zbar, zxing-cpp
+
+	New packages: xlib_libXpresent
 
 2023.05.2, released August 31th, 2023
 
@@ -230,6 +321,72 @@
 	#15321: docker-engine now requires libseccomp by default
 	#15376: Libiconv config
 	#15461: QtVirtualKeyboard segfaults
+
+2023.02.6, released October 16th, 2023
+
+	Important / security related fixes.
+
+	Per-package builds: Do not use hard links for host / target
+	dirs, fixing issues with package rebuilds or post-build
+	scripts modifications.
+
+	Infrastructure: Explicitly disable shuffle mode for Make >=
+	4.4 where needed.
+
+	Urandom-scripts: Move seedrng init script to S01 for earlier
+	random number entrophy initialization.
+
+	Go: Bump to 1.20.x as 1.19.x is now EOL and affected by
+	security issues.
+
+	Updated/fixed packages: at91bootstrap, bind, cups, efl,
+	enlightenment, exim, gcc, glibc, gnu-efi, go, go-bootstrap,
+	gptfdisk, gst-omx, gst1-devtools, gst1-libav,
+	gst1-plugins-bad, gst1-plugins-base, gst1-plugins-good,
+	gst1-plugins-ugly, gst1-python, gst1-rstp-server,
+	gst1-rtsp-vaapi, gstreamer1, gstreamer1-editing-services,
+	libcue, libcurl, libfastjson, libhtp, libmodplug, librsvg,
+	libvpx, libyang, linux-tools, mbedtls, mosquitto, mutt, neon,
+	netsnmp, nmap, nodejs, olsr, openblas, opkg-utils, php,
+	powertop, python-mako, python3, rockchip-mali, samba4, sslh,
+	suricata, tar, unifdef, unrandom-scripts, webkitgtk,
+	wireless-regdb, wpewebkit
+
+	Issues resolved (http://bugs.uclibc.org):
+
+	#15628: Missing dependencies in BR2_PACKAGE_PYTHON_MAKO
+	#15808: connman is not supported on musl
+	#15814: C++ not supported by bootlin toolchain
+
+2023.02.5, released September 27th, 2023
+
+	Important / security related fixes.
+
+	Updated/fixed packages: agentpp, asterisk, at91dataflashboot,
+	aubio, berkeleydb, bind, bwm-ng, chocolate-doom, clamav,
+	compiler-rt, connman, cups, dav1d, diffutils, dracut, dt,
+	expect, fail2ban, fio, flite, freerdp, freeswitch, fstrcmp,
+	gcc, gdb, ghostscript, gmp, go, grub2, haproxy,
+	heirloom-mailx, hwloc, icu, intel-microcode, irssi, libcoap,
+	libcurl, libiec61850, libjxl, libks, libksba, libmodsecurity,
+	libpjsip, libqb, libraw, libssh, libtommath, less, lldpd,
+	log4cxx, lsof, mdadm, mosquitto, mpd, mutt, mv-ddr-marvell,
+	ne10, netatalk, network-manager, nftables, nodejs, ntpsec,
+	nut, openblas, openjdk, openjdk-bin, opensc, openssh,
+	pcm-tools, perftest, php, pixman, poppler, postgresql, pppd,
+	python-django, python-ipython, python-pip, python-pylibfdt,
+	python-tornado, python3, qt5, ramspeed, rtl8189fs, samba4,
+	screen, screenfetch, sngrep, sofia-sip, stellarium,
+	strongswan, sysstat, tar, tcl, uboot, uclibc, vim, webkitgtk,
+	webp, wireshark, xfsprogs, xserver_xorg-server, xterm, yajl,
+	zbar, zxing-cpp
+
+	Issues resolved (http://bugs.uclibc.org):
+
+	#14366: Nodejs fails with "version `GLIBC_2.34' not found"..
+	#15754: The docker-engine and docker-cli versions are not...
+	#15787: atmel_sama5d3_xplained_mmc_defconfig: Missing...
+	#15790: at91sam9x5ek_dev_defconfig: Missing...
 
 2023.02.4, released August 31th, 2023
 
