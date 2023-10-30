@@ -6,6 +6,8 @@ ramfs_addr=0x95000000
 # Kernel bootargs
 set_ramfs_addr_offset=setexpr ramfs_addr_offset $ramfs_addr + 0x40; setexpr ramfs_size_offset $ramfs_size - 0x40;
 set_bootargs=run set_ramfs_addr_offset; setenv bootargs console=ttyAS0,115200 loglevel=7 earlyprintk quiet root=/dev/ram0 rw initrd=0x${ramfs_addr_offset},0x${ramfs_size_offset} clk_ignore_unused
+# Debug!
+set_bootargs=run set_ramfs_addr_offset; setenv bootargs console=ttyAS0,115200 loglevel=7 earlyprintk initrd=0x${ramfs_addr_offset},0x${ramfs_size_offset} clk_ignore_unused initramfs_async=0 init_on_alloc=1 init_on_free=1 initcall_debug
 
 
 # Load uImage and device tree
