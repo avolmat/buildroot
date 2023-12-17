@@ -37,6 +37,9 @@ F:	package/flutter-engine/
 F:	package/flutter-gallery/
 F:	package/flutter-pi/
 F:	package/flutter-sdk-bin/
+F:	package/python-kmod/
+F:	package/python-versioneer/
+F:	support/testing/tests/package/test_firewalld.py
 F:	support/testing/tests/package/test_flutter.py
 
 N:	Adam Heinrich <adam@adamh.cz>
@@ -71,7 +74,11 @@ F:	package/libmbim/
 F:	package/libqmi/
 F:	package/modem-manager/
 
+N:	Alessandro Partesotti <a.partesotti@gmail.com>
+F:	package/oatpp/
+
 N:	Alex Michel <alex.michel@wiedemann-group.com>
+F:	package/libzenoh-pico/
 F:	package/network-manager-openvpn/
 
 N:	Alex Suykov <alex.suykov@gmail.com>
@@ -524,6 +531,7 @@ F:	package/ncdu/
 N:	Brandon Maier <brandon.maier@collins.com>
 F:	board/freescale/ls1046a-frwy/
 F:	configs/ls1046a-frwy_defconfig
+F:	package/python-pysensors/
 F:	package/qoriq-fm-ucode/
 F:	package/unifdef/
 F:	package/vmtouch/
@@ -665,6 +673,7 @@ F:	board/beelink/gs1/
 F:	configs/beelink_gs1_defconfig
 
 N:	Colin Foster <colin.foster@in-advantage.com>
+F:	package/python-tftpy/
 F:	package/rauc-hawkbit-updater/
 
 N:	Corentin Guillevic <corentin.guillevic@smile.fr>
@@ -1069,6 +1078,7 @@ F:	package/python-pymodbus/
 N:	Flávio Tapajós <flavio.tapajos@newtesc.com.br>
 F:	configs/asus_tinker-s_rk3288_defconfig
 F:	board/asus/tinker-s/
+F:	package/rsyslog/
 
 N:	Florian Fainelli <f.fainelli@gmail.com>
 F:	package/cpulimit/
@@ -1087,7 +1097,9 @@ N:	Francisco Gonzalez <gzmorell@gmail.com>
 F:	package/ser2net/
 
 N:	Francois Dugast <francois.dugast.foss@gmail.com>
+F:	board/sipeed/licheepi_nano/
 F:	board/visionfive2/
+F:	configs/sipeed_licheepi_nano_defconfig
 F:	configs/visionfive2_defconfig
 
 N:	Francois Perrad <francois.perrad@gadz.org>
@@ -1201,6 +1213,7 @@ F:	board/bananapi/bananapi-m2-ultra/
 F:	board/freescale/imx6ullevk/
 F:	board/freescale/imxrt1050evk/
 F:	board/olimex/a*
+F:	board/pine64/rockpro64
 F:	configs/amarula_vyasa_rk3288_defconfig
 F:	configs/asus_tinker_rk3288_defconfig
 F:	configs/bananapi_m2_berry_defconfig
@@ -1209,6 +1222,7 @@ F:	configs/freescale_imx6ullevk_defconfig
 F:	configs/imx6ullevk_defconfig
 F:	configs/imxrt1050-evk_defconfig
 F:	configs/olimex_a*
+F:	configs/rockpro64_defconfig
 F:	package/at/
 F:	package/binutils/
 F:	package/cryptsetup/
@@ -1223,6 +1237,7 @@ F:	package/libnss/
 F:	package/libnvme/
 F:	package/mali-driver/
 F:	package/minicom/
+F:	package/mongoose/
 F:	package/mmc-utils/
 F:	package/nfs-utils/
 F:	package/python-libconf/
@@ -1241,6 +1256,7 @@ F:	package/sunxi-mali-utgard/
 F:	package/sunxi-mali-utgard-driver/
 F:	package/sunxi-tools/
 F:	package/swugenerator/
+F:	package/swupdate/
 F:	package/trace-cmd/
 F:	package/udisks/
 F:	package/wilc-driver/
@@ -1692,14 +1708,12 @@ F:	configs/ts7680_defconfig
 F:	package/paho-mqtt-c
 
 N:	Julien Olivain <ju.o@free.fr>
-F:	board/qmtech/zynq/
 F:	board/spike/
 F:	board/technexion/imx8mmpico/
 F:	board/technexion/imx8mpico/
 F:	configs/imx8mmpico_defconfig
 F:	configs/imx8mpico_defconfig
 F:	configs/spike_riscv64_defconfig
-F:	configs/zynq_qmtech_defconfig
 F:	package/fluid-soundfont/
 F:	package/fluidsynth/
 F:	package/glslsandbox-player/
@@ -2007,6 +2021,7 @@ F:	support/testing/tests/package/test_python_pytest.py
 F:	support/testing/tests/package/test_python_pytest_asyncio.py
 
 N:	Marcus Folkesson <marcus.folkesson@gmail.com>
+F:	package/criu/
 F:	package/libcamera/
 F:	package/libcamera-apps/
 F:	package/libostree/
@@ -2193,9 +2208,13 @@ F:	board/versal/
 F:	board/zynq/
 F:	board/zynqmp/
 F:	configs/versal_vck190_defconfig
+F:	configs/zynq_zc702_defconfig
 F:	configs/zynq_zc706_defconfig
+F:	configs/zynqmp_kria_kd240_defconfig
+F:	configs/zynqmp_kria_kr260_defconfig
 F:	configs/zynqmp_kria_kv260_defconfig
 F:	configs/zynqmp_zcu102_defconfig
+F:	configs/zynqmp_zcu104_defconfig
 F:	configs/zynqmp_zcu106_defconfig
 F:	package/bootgen/
 F:	package/versal-firmware/
@@ -2627,6 +2646,10 @@ F:	package/agent-proxy/
 N:	Ryan Wilkins <ryan@deadfrog.net>
 F:	package/biosdevname/
 
+N:	Saeed Kazemi <kazemi.ms@gmail.com>
+F:	package/eza/
+F:	package/procs/
+
 N:	Sam Lancia <sam@gpsm.co.uk>
 F:	package/lrzip/
 
@@ -2691,10 +2714,6 @@ F:	package/hostapd/
 F:	package/rtl8189fs/
 F:	package/wpa_supplicant/
 F:	package/xr819-xradio/
-
-N:	Sergey Matyukevich <sergey.matyukevich@synopsys.com>
-F:	board/synopsys/nsim/
-F:	configs/snps_arc700_nsim_defconfig
 
 N:	Sergio Prado <sergio.prado@e-labworks.com>
 F:	board/toradex/apalis-imx6/
@@ -2823,6 +2842,10 @@ F:	package/open-isns/
 F:	package/reproc/
 F:	package/termcolor/
 F:	package/tl-expected/
+
+N:	Takumi Takahashi <takumiiinn@gmail.com>
+F:	package/gsettings-desktop-schemas/
+F:	package/libcanberra/
 
 N:	Tan En De <ende.tan@starfivetech.com>
 F:	package/libkcapi/
@@ -3076,6 +3099,7 @@ F:	package/mksh/
 F:	package/ruby/
 F:	package/uclibc/
 F:	package/uclibc-ng-test/
+F:	support/testing/tests/package/test_ruby.py
 
 N:	Will Newton <will.newton@gmail.com>
 F:	package/enchant/
@@ -3169,6 +3193,7 @@ F:	package/zisofs-tools/
 F:	support/download/
 
 N:	Yann E. MORIN <yann.morin@orange.com>
+F:	.editorconfig
 F:	package/gpsd/
 
 N:	Yegor Yefremov <yegorslists@googlemail.com>
