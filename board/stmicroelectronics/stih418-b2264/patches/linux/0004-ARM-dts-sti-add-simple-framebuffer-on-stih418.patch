@@ -1,0 +1,38 @@
+From 5cedb6fbace2232fdd631393ce66a9d7704f0f30 Mon Sep 17 00:00:00 2001
+From: Raphael Gallais-Pou <rgallaispou@gmail.com>
+Date: Sat, 27 Jan 2024 11:45:14 +0100
+Subject: [PATCH 1/1] ARM: dts: sti: add simple-framebuffer on stih418
+
+Signed-off-by: Raphael Gallais-Pou <rgallaispou@gmail.com>
+---
+ arch/arm/boot/dts/st/stih418-b2264.dts | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/arch/arm/boot/dts/st/stih418-b2264.dts b/arch/arm/boot/dts/st/stih418-b2264.dts
+index f2bf757e3f5d..2252e1daf529 100644
+--- a/arch/arm/boot/dts/st/stih418-b2264.dts
++++ b/arch/arm/boot/dts/st/stih418-b2264.dts
+@@ -12,6 +12,20 @@ / {
+ 
+ 	chosen {
+ 		stdout-path = &sbc_serial0;
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges;
++
++		framebuffer {
++			compatible = "simple-framebuffer";
++			clocks = <&clk_s_c0_flexgen CLK_COMPO_DVP>,
++				 <&clk_s_c0_flexgen CLK_COMPO_DVP>,
++				 <&clk_s_d2_flexgen CLK_PIX_MAIN_DISP>,
++				 <&clk_s_d2_flexgen CLK_PIX_AUX_DISP>,
++				 <&clk_s_c0_flexgen CLK_PROC_MIXER>;
++
++			status = "disabled";
++		};
+ 	};
+ 
+ 	memory@40000000 {
+-- 
+2.43.0
+
