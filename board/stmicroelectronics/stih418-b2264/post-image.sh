@@ -17,6 +17,7 @@ FIRST_DT=$(sed -n \
 RAMFS=""; [ -z "$(grep -E ^BR2_TARGET_ROOTFS_CPIO_UIMAGE=y ${BR2_CONFIG})" ] || RAMFS="-ramfs"
 
 cp -f "${BOARD_DIR}/uenv${RAMFS}.txt" "${BINARIES_DIR}/uenv.txt"
+cp -f "${BOARD_DIR}/4kopen-pbl-secure.bin" "${BINARIES_DIR}/4kopen-pbl-secure.bin"
 
 # Mount /boot
 if [ -e "${TARGET_DIR}/etc/fstab" ]; then
