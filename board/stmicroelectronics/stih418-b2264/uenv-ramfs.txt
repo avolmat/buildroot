@@ -15,3 +15,10 @@ load_all=fatload mmc 0:1 $uimage_addr uimage && fatload mmc 0:1 $dtb_addr device
 
 # Boot
 bootcmd=run load_all && run set_bootargs && echo "booting using: " $bootargs && bootm $uimage_addr $ramfs_addr $dtb_addr
+
+# Check if flashed PBL can run in secure mode
+#   Read PBL from flash, then put CRC into 0x96000000
+#   and check if CRC is ok (should be dce2641f),
+#   if not upgrade to 4kopen-pbl-secure.bin
+checkpbl=echo "*** check if PBL need upgrade / secure mode ***"; fatload mmc 0:1 0x98000000 4kopen-pbl-secure.bin && crc32 0x98000000 $filesize 0x96000010 && sf probe && sf read 0x98000000 0x0 $filesize && crc32 0x98000000 $filesize 0x96000000 && if itest *0x96000000 != *0x96000010 ; then echo "Upgrade PBL now"; run update_pbl ; else echo "PBL ok, no need to upgrade" ; fi
+update_pbl=fatload mmc 0:1 0x98000000 4kopen-pbl-secure.bin && sf probe && sf update 0x98000000 0 $filesize && reset
