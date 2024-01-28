@@ -20,7 +20,7 @@ start() {
 	echo "on" > $hdmi
 
 	printf 'Starting %s: ' "${DAEMON}"
-	start-stop-daemon -S -x "${DAEMON_EXE}" -p "${PIDFILE}" -m -b -- --idle-time=0
+	start-stop-daemon -S -x "${DAEMON_EXE}" -p "${PIDFILE}" -m -b -- --idle-time=0 --continue-without-input
 	status=$?
 	if [ "$status" -eq 0 ]; then
 		echo OK
