@@ -1,0 +1,81 @@
+# u-bootrom supports u-boot.2015 commands plus few extras.
+#
+# Extra variables:
+#   script_dev_usb    'usb X.Y'  default usb instance:partition to boot from.
+#   script_dev_mmc    'mmc X.Y'  default mmc instance:partition to boot from.
+#   script_dev        $script_usb|mmc_dev depending on media where boot script was found.
+#   script_fsload     'fatload' or 'ext2load' depending on which was used to load boot script.
+#   dram_base         DDR start address
+#   dram_size         DDR size (in bytes)
+#   load_addr         default load address (DDR start)
+#   board             board id ("b2120", "b2260", ...)
+#
+# Extra commands:
+#   hpen              holding pen reconfiguration and kick support, for SMP boot
+#   load_optee        OPTEE specific formated image intallation command
+#   boot_optee        OPTEE specific boot command
+#
+# >
+# > help boot_optee
+# boot_optee - Boot a secure and a non-secure application
+#
+# Usage:
+# boot_optee 	Boot arguments are read from the envirnoment:
+# 	'optee_entry' is the secure application entry point, hexadecimal.
+# 	'optee_ns_entry' is the non-secure application entry point, hexa.
+# 	'optee_arg0' is the optee 1st argument. Set to 0 if not defined.
+# 	'optee_arg1' is the optee 2nd argument. Set to 0 if not defined.
+# 	'optee_arg2' is the optee 3rd argument. Set to 0 if not defined.
+# 	'optee_arg3' is the optee 4th argument. Set to 0 if not defined.
+#
+# > help boot_optee
+# load_optee - Install a formated OPTEE image in memory
+#
+# Usage:
+# load_optee
+#	Read a formated OPTEE image in memory and installs its images
+# 	at the target memory locations. Command relies on environment
+# 	variables 'tee_dram_start' and 'tee_dram_size' to locate the TEE
+# 	reserved external RAM, eventually 'tee_iram_start' and 'tee_iram_size'
+# 	if there is a reserved internal RAM area for the OP-TEE.
+#
+# 	load_optee defines env variables 'optee_ns_entry' and 'optee_argN'
+# 	according to optee load directive (TEE RAM locations and optee image
+# 	boot info).
+# >
+# > help hpen
+# hpen - Manipulate secondary boot core trapped in a holding pen sequence
+#
+# Usage:
+# hpen <options...>
+# prepare <addr> [1stage|2stage]
+#     - prepare a 1stage or a 2stage hpen sequence.
+#       <addr> specifies the address of the hpen kicker to use. hexa.
+# kick hpen|<entrypoint>
+#     - kick the loaded hpen. returns only once cores have all left
+#       the current hpen loop.
+#       <entrypoint> is the target address core shall branch to.
+#       Using string "hpen" allow to enter back hpen sequence and
+#       allows to program a specific hpen setup.
+#
+# At u-boot entry, secondary boot core are placed in a 1stage hpen
+# sequence with a local ERAM cell address as hpen kicker
+#
+# Traces considerations:
+#
+# u-bootrom enables silent console. To get some logs from this script one
+# can disable silent mode ("setenv silent;") and re-enable silent mode
+# ("setenv silent 1") in this script.
+# -----------------------------------------------------------------------
+#
+# This is the default install: by default, boot the kernel for current board
+#
+
+script_path="b2260/u-bootrom.script-uboot"
+
+setenv silent;
+echo "[bootscript] boot from $script_path"
+setenv silent 1
+
+$script_fsload $script_dev $load_addr $script_path
+source $load_addr $filesize
