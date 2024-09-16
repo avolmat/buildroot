@@ -82,7 +82,7 @@ define GDK_PIXBUF_UPDATE_CACHE
 	$(SED) 's,^"lib,"/usr/lib,g' \
 		$(TARGET_DIR)/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache
 endef
-GDK_PIXBUF_POST_INSTALL_TARGET_HOOKS += GDK_PIXBUF_UPDATE_CACHE
+GDK_PIXBUF_ROOTFS_PRE_CMD_HOOKS += GDK_PIXBUF_UPDATE_CACHE
 endif
 
 # Target gdk-pixbuf needs loaders.cache populated to build for the
