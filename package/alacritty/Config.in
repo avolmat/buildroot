@@ -1,0 +1,20 @@
+config BR2_PACKAGE_ALACRITTY
+	bool "alacritty"
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+        depends on BR2_PACKAGE_HAS_UDEV
+        depends on !BR2_STATIC_LIBS # wayland
+        depends on BR2_TOOLCHAIN_HAS_THREADS # wayland
+	select BR2_PACKAGE_HOST_RUSTC
+        select BR2_PACKAGE_WAYLAND
+        select BR2_PACKAGE_WAYLAND_PROTOCOLS
+        select BR2_PACKAGE_LIBXKBCOMMON
+        select BR2_PACKAGE_FREETYPE
+        select BR2_PACKAGE_FONTCONFIG
+	help
+	  Alacritty is a modern terminal emulator that comes with sensible
+	  defaults, but allows for extensive configuration. By integrating
+	  with other applications, rather than reimplementing their
+	  functionality, it manages to provide a flexible set of features
+	  with high performance.
+
+	  https://github.com/alacritty/alacritty.git
