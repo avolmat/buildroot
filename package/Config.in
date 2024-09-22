@@ -347,6 +347,7 @@ comment "Graphic applications"
 	source "package/libdbusmenu-gtk/Config.in"
 	source "package/wf-shell/Config.in"
 	source "package/wcm/Config.in"
+	source "package/alacritty/Config.in"
 
 comment "Graphic libraries"
 	source "package/cegui/Config.in"
