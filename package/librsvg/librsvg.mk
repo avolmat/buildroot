@@ -12,7 +12,7 @@ LIBRSVG_INSTALL_STAGING = YES
 LIBRSVG_CONF_ENV = \
 	LIBS=$(TARGET_NLS_LIBS) \
 	RUST_TARGET=$(RUSTC_TARGET_NAME)
-LIBRSVG_CONF_OPTS = --enable-pixbuf-loader --disable-tools
+LIBRSVG_CONF_OPTS = --disable-pixbuf-loader --disable-tools
 HOST_LIBRSVG_CONF_OPTS = --enable-introspection=no
 LIBRSVG_DEPENDENCIES = cairo host-gdk-pixbuf gdk-pixbuf host-rustc libglib2 libxml2 pango \
 	$(TARGET_NLS_DEPENDENCIES)
