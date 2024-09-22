@@ -11,7 +11,13 @@ platform:
 How to build
 ============
 
- $ make stih418_b2264_defconfig / make stih418_b2264_ramfs_defconfig
+ stih418_b2264_defconfig: profile with weston
+ stih418_b2264_ramfs_defconfig: profile with weston (using ramfs)
+ stih418_b2264_wayfire_defconfig: profile with wayfire
+ stih418_b2264_wayfire_full_defconfig: profile with weston,mpv,doom,supertuxkart
+
+ $ make stih418_b2264_defconfig / make stih418_b2264_ramfs_defconfig /
+        stih418_b2264_wayfire_defconfig / make stih418_b2264_wayfire_full_defconfig
  $ make
 
 How to write the microSD card / USB
