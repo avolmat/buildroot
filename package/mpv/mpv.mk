@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-MPV_VERSION = 0.38.0
+MPV_VERSION = 0.39.0
 MPV_SITE = $(call github,mpv-player,mpv,v$(MPV_VERSION))
 MPV_DEPENDENCIES = \
 	host-pkgconf ffmpeg libass libplacebo zlib \
