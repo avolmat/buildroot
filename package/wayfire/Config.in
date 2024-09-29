@@ -10,6 +10,7 @@ config BR2_PACKAGE_WAYFIRE
 	depends on BR2_USE_MMU # pango
 	depends on BR2_INSTALL_LIBSTDCPP # pango
 	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # pango
+	depends on BR2_TOOLCHAIN_HAS_OPENMP
 	select BR2_PACKAGE_WLROOTS
 	select BR2_PACKAGE_CAIRO
 	select BR2_PACKAGE_CAIRO_PNG
