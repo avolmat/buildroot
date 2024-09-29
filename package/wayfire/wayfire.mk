@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-WAYFIRE_VERSION = 0.8.0
+WAYFIRE_VERSION = 0.9.0
 WAYFIRE_SOURCE = wayfire-$(WAYFIRE_VERSION).tar.xz
 WAYFIRE_INSTALL_STAGING = YES
 WAYFIRE_SITE = https://github.com/WayfireWM/wayfire/releases/download/v$(WAYFIRE_VERSION)
