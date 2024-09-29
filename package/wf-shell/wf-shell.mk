@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-WF_SHELL_VERSION = 0.8.1
+WF_SHELL_VERSION = 0.9.0
 WF_SHELL_SOURCE = wf-shell-$(WF_SHELL_VERSION).tar.xz
 WF_SHELL_SITE = https://github.com/WayfireWM/wf-shell/releases/download/v$(WF_SHELL_VERSION)
 WF_SHELL_INSTALL_STAGING = YES
