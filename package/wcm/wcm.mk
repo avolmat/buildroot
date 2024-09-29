@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-WCM_VERSION = 0.8.0
+WCM_VERSION = 0.9.0
 WCM_SOURCE = wcm-$(WCM_VERSION).tar.xz
 WCM_SITE = https://github.com/WayfireWM/wcm/releases/download/v$(WCM_VERSION)
 WCM_INSTALL_STAGING = YES
