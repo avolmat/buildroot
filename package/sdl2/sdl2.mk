@@ -111,13 +111,6 @@ else
 SDL2_CONF_OPTS += --disable-video-x11-xcursor
 endif
 
-ifeq ($(BR2_PACKAGE_SDL2_WAYLAND),y)
-SDL2_DEPENDENCIES += libegl libxkbcommon wayland wayland-protocols
-SDL2_CONF_OPTS += --enable-video-wayland
-else
-SDL2_CONF_OPTS += --disable-video-wayland
-endif
-
 ifeq ($(BR2_PACKAGE_XLIB_LIBXI),y)
 SDL2_DEPENDENCIES += xlib_libXi
 SDL2_CONF_OPTS += --enable-video-x11-xinput
@@ -168,6 +161,14 @@ SDL2_DEPENDENCIES += alsa-lib
 SDL2_CONF_OPTS += --enable-alsa
 else
 SDL2_CONF_OPTS += --disable-alsa
+endif
+
+ifeq ($(BR2_PACKAGE_SDL2_WAYLAND),y)
+SDL2_DEPENDENCIES += libegl libxkbcommon wayland wayland-protocols
+SDL2_CONF_OPTS += --enable-video-wayland
+SDL2_CONF_ENV += PKG_CONFIG_PATH=$(HOST_DIR)/lib/pkgconfig
+else
+SDL2_CONF_OPTS += --disable-video-wayland
 endif
 
 ifeq ($(BR2_PACKAGE_SDL2_KMSDRM),y)
