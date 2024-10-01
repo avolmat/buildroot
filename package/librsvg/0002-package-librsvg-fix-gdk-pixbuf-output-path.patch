@@ -1,0 +1,27 @@
+From f7d57283e0f119f9d9be3afe5d81a10f207539de Mon Sep 17 00:00:00 2001
+From: Jerome Audu <jau@free.fr>
+Date: Tue, 1 Oct 2024 22:02:41 +0200
+Subject: [PATCH] package/librsvg: fix gdk-pixbuf output path
+
+---
+ configure.ac | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 9290bb0a6969..5b5493780a19 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -232,8 +232,8 @@ if test "$enable_pixbuf_loader" = "yes"; then
+   # First try the standalone gdk-pixbuf
+   gdk_pixbuf_binary_version="`$PKG_CONFIG --variable=gdk_pixbuf_binary_version gdk-pixbuf-2.0`"
+   gdk_pixbuf_binarydir="`$PKG_CONFIG --variable=gdk_pixbuf_binarydir gdk-pixbuf-2.0`"
+-  gdk_pixbuf_moduledir=`$PKG_CONFIG --variable gdk_pixbuf_moduledir gdk-pixbuf-2.0`
+-  gdk_pixbuf_cache_file=`$PKG_CONFIG --variable gdk_pixbuf_cache_file gdk-pixbuf-2.0`
++  gdk_pixbuf_moduledir=`realpath $($PKG_CONFIG --variable gdk_pixbuf_moduledir gdk-pixbuf-2.0) | sed "s|${STAGING_DIR}||"`
++  gdk_pixbuf_cache_file=`realpath $($PKG_CONFIG --variable gdk_pixbuf_cache_file gdk-pixbuf-2.0) | sed "s|${STAGING_DIR}||"`
+ fi
+ 
+ AC_SUBST([gdk_pixbuf_binary_version])
+-- 
+2.46.2
+
