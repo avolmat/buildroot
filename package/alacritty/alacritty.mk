@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-ALACRITTY_VERSION = 0.13.2
+ALACRITTY_VERSION = 0.14.0
 ALACRITTY_SITE = $(call github,alacritty,alacritty,v$(ALACRITTY_VERSION))
 ALACRITTY_LICENSE = MIT
 ALACRITTY_LICENSE_FILES = LICENSE-MIT
