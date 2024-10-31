@@ -4,13 +4,14 @@
 #
 ################################################################################
 
-WAYFIRE_VERSION = 0.9.0
-WAYFIRE_SOURCE = wayfire-$(WAYFIRE_VERSION).tar.xz
-WAYFIRE_INSTALL_STAGING = YES
-WAYFIRE_SITE = https://github.com/WayfireWM/wayfire/releases/download/v$(WAYFIRE_VERSION)
+WAYFIRE_VERSION = 3d3f426f7de8a24117f6c1d33c8dead1bc80b7e9
+WAYFIRE_SITE = https://github.com/WayfireWM/wayfire
+WAYFIRE_SITE_METHOD = git
+WAYFIRE_GIT_SUBMODULES = YES
 WAYFIRE_LICENSE = MIT
 WAYFIRE_LICENSE_FILES = LICENSE
 WAYFIRE_DEPENDENCIES = host-pkgconf wlroots glm json-for-modern-cpp cairo pango
+WAYFIRE_INSTALL_STAGING = YES
 WAYFIRE_CONF_OPTS = \
 	-Dwerror=false
 
