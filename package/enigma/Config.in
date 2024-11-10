@@ -1,0 +1,15 @@
+config BR2_PACKAGE_ENIGMA
+	bool "enigma"
+	depends on BR2_PACKAGE_SDL2
+	depends on BR2_PACKAGE_XERCES
+	select BR2_PACKAGE_SDL2_IMAGE
+	select BR2_PACKAGE_SDL2_TTF
+	select BR2_PACKAGE_SDL2_MIXER
+
+	help
+	  Enigma is a unique puzzle game, with influences from almost every game
+	  genre.  Your objective is easily explained: you control a small black
+	  marble with your mouse and have to find and uncover all pairs of
+	  identical Oxyd stones in each landscape.
+
+	  https://github.com/Enigma-Game/Enigma
