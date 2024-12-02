@@ -138,6 +138,9 @@ F:	package/liblog4c-localtime/
 N:	Alexandre Belloni <alexandre.belloni@bootlin.com>
 F:	package/tz/
 
+N:	Alex Bennée <alex.bennee@linaro.org>
+F:	package/vkmark/
+
 N:	Alexandre Esse <alexandre.esse.dev@gmail.com>
 F:	package/kvazaar/
 F:	package/v4l2loopback/
