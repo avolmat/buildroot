@@ -1,0 +1,47 @@
+config BR2_PACKAGE_VKMARK_FLAVOR_ANY
+	bool
+
+config BR2_PACKAGE_VKMARK_FLAVOR_KMS
+	bool
+	default y if BR2_PACKAGE_HAS_LIBGBM
+        select BR2_PACKAGE_VKMARK_FLAVOR_ANY
+
+config BR2_PACKAGE_VKMARK_FLAVOR_WAYLAND
+	bool
+	default y if BR2_PACKAGE_WAYLAND
+	select BR2_PACKAGE_VKMARK_FLAVOR_ANY
+
+config BR2_PACKAGE_VKMARK_FLAVOR_X11
+	bool
+	default y if BR2_PACKAGE_XORG7
+        select BR2_PACKAGE_VKMARK_FLAVOR_ANY
+
+config BR2_PACKAGE_VKMARK
+	bool "vkmark"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # C++14
+	depends on BR2_PACKAGE_VKMARK_FLAVOR_ANY
+	select BR2_PACKAGE_VULKAN_HEADERS
+	select BR2_PACKAGE_VULKAN_LOADER
+        depends on !BR2_STATIC_LIBS # vulkan-loader
+        depends on BR2_TOOLCHAIN_HAS_THREADS # vulkan-loader
+	select BR2_PACKAGE_GLM
+        depends on BR2_USE_WCHAR # assimp
+        depends on BR2_TOOLCHAIN_GCC_AT_LEAST_7 # assimp
+	depends on BR2_INSTALL_LIBSTDCPP # vulkan-loader, glm, assimp, vkmark
+	select BR2_PACKAGE_ASSIMP
+	select BR2_PACKAGE_WAYLAND_PROTOCOLS if BR2_PACKAGE_VKMARK_FLAVOR_WAYLAND
+	select BR2_PACKAGE_LIBXCB if BR2_PACKAGE_VKMARK_FLAVOR_X11
+	select BR2_PACKAGE_LIBDRM if BR2_PACKAGE_VKMARK_FLAVOR_KMS
+	help
+	  vmmark is an Vulkan GPU benchmark.
+
+	  https://github.com/vkmark/vkmark
+
+if BR2_PACKAGE_VKMARK_FLAVOR_ANY
+
+comment "vkmark needs a toolchain w/ C++, dynamic library, threads"
+comment "and some form of backend (wayland, xcb or drm)"
+	depends on !BR2_INSTALL_LIBSTDCPP || BR2_STATIC_LIBS || \
+		!BR2_TOOLCHAIN_HAS_THREADS
+endif
